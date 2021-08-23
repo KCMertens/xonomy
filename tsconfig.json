@@ -7,16 +7,16 @@
 		"moduleResolution": "node",
 		"sourceMap": true,
 		
-        "strict": true,
+		"strict": true,
+		"noImplicitAny": false,
+		"strictNullChecks": false,
 		
 		"resolveJsonModule": true,
 		
 		"lib": [
-			"es2017",
+			"ES2020",
 			"dom",
 			"dom.iterable",
-			"es2018.promise",
-			"esnext.array"
 		],
 
 		"baseUrl": "src",
@@ -36,6 +36,7 @@
 			// So only autoload those typings we actually want and need.
 
 			// See https://github.com/sindresorhus/del/issues/88
+			"@types/jquery"
 		],
 		// "allowSyntheticDefaultImports": true,
 
