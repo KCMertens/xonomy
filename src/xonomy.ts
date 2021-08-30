@@ -73,8 +73,7 @@ type XonomyMenuAction = {
 	/**  whether sub-menu is expanded */ 
 	expanded(instance: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance): boolean
 }
-// are these actually different?
-type XonomyInlineMenuAction = {};
+
 type XonomyElementDefinition = {
 	displayName?: (instance: XonomyElementInstance) => string
 	title?: (instance: XonomyElementInstance) => string
@@ -82,10 +81,10 @@ type XonomyElementDefinition = {
 
 	attributes: Record<string, XonomyAttributeDefinition>
 	menu: XonomyMenuAction[]
-	inlineMenu: XonomyInlineMenuAction[] 
+	inlineMenu: XonomyMenuAction[] 
 	/**  list of other element names */ 
 	canDropTo: string[];
-	elementName(instance: XonomyElementInstance): string
+	elementName(): string
 	displayValue(instance: XonomyElementInstance): string
 	backgroundColour(instance: XonomyElementInstance): string
 	/** allow dropping to another parent? */ 
@@ -108,6 +107,10 @@ type XonomyElementDefinition = {
 	
 	/**  whether to hide this (and all descendants!) in the interface */ 
 	isInvisible(instance: XonomyElementInstance): boolean
+
+	/** return html-as-string to render a popup the user can use to input a value */
+	asker: (currentValue: string, askerParameter: any, instance: XonomyElementInstance) => string
+	askerParameter: any;
 }
 
 type XonomyAttributeDefinition = {
@@ -130,9 +133,7 @@ type XonomyAttributeDefinition = {
 
 type XonomyDocSpecOnChange = () => void;
 
-
-
- type XonomyDocSpec = {
+type XonomyDocSpec = {
 	elements: Record<string, XonomyElementDefinition>
 	unknownElement: XonomyElementDefinition|((elementID: string) => XonomyElementDefinition)
 	unknownAttribute: XonomyAttributeDefinition|((elementID: string, attributeName: string) => XonomyAttributeDefinition)
@@ -150,59 +151,99 @@ type XonomyDocSpecOnChange = () => void;
 	getElementId(xmlElementName: string, parentDefinitionId?: string): string
 }
 
+type XonomyPickListOption = string|{
+	caption: string,
+	value: string,
+	displayValue?: string
+}
+type XonomyWhat = 'openingTagName'|'closingTagName'|'attributeName'|'attributeValue'|'text'|'rollouter'|'warner'|'childrenCollapsed';
+
+
 // -----------------------------------------
 
+class Surrogate {
+	constructor(
+		public parent: XonomyElementInstance
+	) {}
+}
 
-const Xonomy: any = {
+const Xonomy = {
 	lang: "", //"en"|"de"|fr"| ...
-	mode: "nerd", //"nerd"|"laic"
-};
+	mode: "nerd" as 'nerd'|'laic', //"nerd"|"laic"
+	namespaces: {} as Record<string, string>, //eg. "xmlns:mbm": "http://lexonista.com"
+	lastIDNum: 0,
+	docSpec: null as null|XonomyDocSpec,
+	harvestCache: {} as Record<string, XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance>,
+	draggingID: null as null|string, //what are we dragging?
+	notclick: false, //should the latest click-off event be ignored?
+	lastAskerParam: null as any, // todo check usage
+	
+	// when-you-can - async requests to create autocompletions
+	wycLastID: 0,
+	wycCache: {} as Record<string, any>, // todo check if we can narrow the type a bit
+	
+	warnings: [] as Array<{htmlID: string, text: string}>, // filled by plugin function Xonomy.verify
 
-//@ts-ignore
-window.Xonomy=Xonomy;
+	// keyboard navigation focus variables
+	currentHtmlId: null as null|string,
+	currentFocus: null as null|XonomyWhat,
+	keyNav: false,
+	
+	lastClickWhat: "" as XonomyWhat,
+	
+	textFromID: "",
+	textTillID: "",
+	textFromIndex: 0,
+	textTillIndex: 0,
 
-Xonomy.setMode=function(mode: 'nerd'|'laic') {
+	keyboardEventCatcher: null as null|JQuery<HTMLElement>,
+	scrollableContainer: null as null|JQuery<HTMLElement>,
+
+	/** Ignore the next keyUp event */
+	notKeyUp: false,
+
+	answer: null as null|((val: string) => void),
+
+setMode(mode: 'nerd'|'laic') {
 	if(mode=="nerd" || mode=="laic") Xonomy.mode=mode;
 	if(mode=="nerd") $(".xonomy").removeClass("laic").addClass("nerd");
 	if(mode=="laic") $(".xonomy").removeClass("nerd").addClass("laic");
-}
+},
 
-Xonomy.jsEscape=function(str: string) {
+jsEscape(str: string) {
   return String(str)
 		.replace(/\"/g, '\\\"')
 		.replace(/\'/g, '\\\'')
-};
-Xonomy.xmlEscape=function(str: string, jsEscape: boolean) {
+},
+xmlEscape(str: string, jsEscape?: boolean) {
 	if(jsEscape) str=Xonomy.jsEscape(str);
-  return String(str)
+	return String(str)
 		.replace(/&/g, '&amp;')
 		.replace(/"/g, '&quot;')
 		.replace(/'/g, '&apos;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;');
-};
-Xonomy.xmlUnscape=function(value: string){
-    return String(value)
-        .replace(/&quot;/g, '"')
-        .replace(/&apos;/g, "'")
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&');
-};
-Xonomy.isNamespaceDeclaration=function(attributeName: string) {
+},
+xmlUnscape(value: string){
+	return String(value)
+		.replace(/&quot;/g, '"')
+		.replace(/&apos;/g, "'")
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&amp;/g, '&');
+},
+isNamespaceDeclaration(attributeName: string) {
 	//Tells you whether an attribute name is a namespace declaration.
 	var ret=false;
 	if(attributeName=="xmlns") ret=true;
 	if(attributeName.length>=6 && attributeName.substring(0, 6)=="xmlns:") ret=true;
 	return ret;
-};
-Xonomy.namespaces={}; //eg. "xmlns:mbm": "http://lexonista.com"
-
-Xonomy.xml2js=function(xml: string|Document|Element, jsParent?: XonomyElementInstance) {
+},
+xml2js(xml: string|Document|Element, jsParent?: XonomyElementInstance) {
 	if(typeof(xml)=="string") xml=$.parseXML(xml);
 	if('documentElement' in xml) xml=xml.documentElement;
 
-	var js: XonomyElementInstance =new Xonomy.surrogate(jsParent);
+	var js: XonomyElementInstance =new Surrogate(jsParent);
 	js.type="element";
 	js.elementName=xml.nodeName;
 	js.name=Xonomy.docSpec.getElementId(js.elementName, jsParent ? jsParent.name : undefined);
@@ -220,9 +261,9 @@ Xonomy.xml2js=function(xml: string|Document|Element, jsParent?: XonomyElementIns
 	}
 	js.children=[];
 	for(var i=0; i<xml.childNodes.length; i++) {
-		var child=xml.childNodes[i];
+		var child=xml. childNodes[i];
 		if(child.nodeType==1) { //element node
-			js["children"].push(Xonomy.xml2js(child, js));
+			js["children"].push(Xonomy.xml2js(child as Element, js));
 		}
 		if(child.nodeType==3) { //text node
 			js["children"].push({type: "text", value: child.nodeValue, htmlID: "", parent: function(){return js}, });
@@ -230,8 +271,8 @@ Xonomy.xml2js=function(xml: string|Document|Element, jsParent?: XonomyElementIns
 	}
 	js=Xonomy.enrichElement(js);
 	return js;
-};
-Xonomy.js2xml=function(js: XonomyElementInstance|XonomyTextInstance|XonomyAttributeInstance) {
+},
+js2xml(js: XonomyElementInstance|XonomyTextInstance|XonomyAttributeInstance) {
 	if(js.type=="text") {
 		return Xonomy.xmlEscape(js.value);
 	} else if(js.type=="attribute") {
@@ -261,9 +302,8 @@ Xonomy.js2xml=function(js: XonomyElementInstance|XonomyTextInstance|XonomyAttrib
 		}
 		return xml;
 	}
-};
-type XonomyElementInstanceBasic = XonomyElementInstance; // to be defined later
-Xonomy.enrichElement=function(jsElement: XonomyElementInstanceBasic) {
+},
+enrichElement(jsElement: XonomyElementInstance) {
 	jsElement.hasAttribute=function(name) {
 		var ret=false;
 		for(var i=0; i<this.attributes.length; i++) {
@@ -371,24 +411,25 @@ Xonomy.enrichElement=function(jsElement: XonomyElementInstanceBasic) {
 		});
 	};
 	return jsElement;
-};
+},
 
-Xonomy.verifyDocSpec=function() { //make sure the docSpec object has everything it needs
+verifyDocSpec() { //make sure the docSpec object has everything it needs
 	if(!Xonomy.docSpec || typeof(Xonomy.docSpec)!="object") Xonomy.docSpec={};
 	if(!Xonomy.docSpec.elements || typeof(Xonomy.docSpec.elements)!="object") Xonomy.docSpec.elements={};
 	if(!Xonomy.docSpec.onchange || typeof(Xonomy.docSpec.onchange)!="function") Xonomy.docSpec.onchange=function(){};
 	if(!Xonomy.docSpec.validate || typeof(Xonomy.docSpec.validate)!="function") Xonomy.docSpec.validate=function(){};
 	if(!Xonomy.docSpec.getElementId || typeof(Xonomy.docSpec.getElementId)!="function") Xonomy.docSpec.getElementId=function(elementName: string, parentDefinitionId: string) { return elementName; }
-};
-Xonomy.asFunction=function<T>(specProperty: T|(() => T), defaultValue: T){
-	if(typeof(specProperty)=="function")
+},
+
+asFunction<T, I extends XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance|undefined>(specProperty: T|undefined|((inst?: I) => T), defaultValue: T): (inst?: I) => T {
+	if(specProperty instanceof Function)
 		return specProperty;
 	else if (typeof(specProperty)==typeof(defaultValue))
 		return function() { return specProperty; }
 	else
 		return function() { return defaultValue };
-}
-Xonomy.verifyDocSpecElement=function(name: string) { //make sure the DocSpec object has such an element, that the element has everything it needs
+},
+verifyDocSpecElement(name: string) { //make sure the DocSpec object has such an element, that the element has everything it needs
 	if(!Xonomy.docSpec.elements[name] || typeof(Xonomy.docSpec.elements[name])!="object") {
 		if(Xonomy.docSpec.unknownElement) {
 			Xonomy.docSpec.elements[name]=(typeof(Xonomy.docSpec.unknownElement)==="function")
@@ -422,8 +463,8 @@ Xonomy.verifyDocSpecElement=function(name: string) { //make sure the DocSpec obj
 	for(var i=0; i<spec.menu.length; i++) Xonomy.verifyDocSpecMenuItem(spec.menu[i]);
 	for(var i=0; i<spec.inlineMenu.length; i++) Xonomy.verifyDocSpecMenuItem(spec.inlineMenu[i]);
 	for(var attributeName in spec.attributes) Xonomy.verifyDocSpecAttribute(name, attributeName);
-};
-Xonomy.verifyDocSpecAttribute=function(elementName: string, attributeName: string) { //make sure the DocSpec object has such an attribute, that the attribute has everything it needs
+},
+verifyDocSpecAttribute(elementName: string, attributeName: string) { //make sure the DocSpec object has such an attribute, that the attribute has everything it needs
 	var elSpec=Xonomy.docSpec.elements[elementName];
 	if(!elSpec.attributes[attributeName] || typeof(elSpec.attributes[attributeName])!="object") {
 		if(Xonomy.docSpec.unknownAttribute) {
@@ -434,7 +475,7 @@ Xonomy.verifyDocSpecAttribute=function(elementName: string, attributeName: strin
 		else elSpec.attributes[attributeName]={};
 	}
 	var spec=elSpec.attributes[attributeName];
-	if(!spec.asker || typeof(spec.asker)!="function") spec.asker=function(){return ""};
+	if(!(spec.asker instanceof Function)) spec.asker=function(){return ""};
 	if(!spec.menu || typeof(spec.menu)!="object") spec.menu=[];
 	spec.isReadOnly=Xonomy.asFunction(spec.isReadOnly, false);
 	spec.isInvisible=Xonomy.asFunction(spec.isInvisible, false);
@@ -442,21 +483,19 @@ Xonomy.verifyDocSpecAttribute=function(elementName: string, attributeName: strin
 	if(spec.displayName) spec.displayName=Xonomy.asFunction(spec.displayName, "");
 	if(spec.title) spec.title=Xonomy.asFunction(spec.title, "");
 	for(var i=0; i<spec.menu.length; i++) Xonomy.verifyDocSpecMenuItem(spec.menu[i]);
-};
-Xonomy.verifyDocSpecMenuItem=function(menuItem: XonomyMenuAction) { //make sure the menu item has all it needs
+},
+verifyDocSpecMenuItem(menuItem: XonomyMenuAction) { //make sure the menu item has all it needs
 	menuItem.caption=Xonomy.asFunction(menuItem.caption, "?");
 	if(!menuItem.action || typeof(menuItem.action)!="function") menuItem.action=function(){};
 	if(!menuItem.hideIf) menuItem.hideIf=function(){return false;};
 	if(typeof(menuItem.expanded)!="function") menuItem.expanded=Xonomy.asFunction(menuItem.expanded, false);
-};
+},
 
-Xonomy.nextID=function() {
+nextID() {
 	return "xonomy"+(++Xonomy.lastIDNum);
-};
-Xonomy.lastIDNum=0;
+},
 
-Xonomy.docSpec=null;
-Xonomy.refresh=function() {
+refresh() {
 	$(".xonomy .textnode[data-value='']").each(function(){ //delete empty text nodes if the parent element is not allowed to have text
 		var $this=$(this);
 		var $parent=$this.closest(".element");
@@ -557,10 +596,10 @@ Xonomy.refresh=function() {
 			if(atSpec.caption) $(this).children(".inlinecaption").html("&nbsp;"+Xonomy.textByLang(atSpec.caption(Xonomy.harvestAttribute(this)))+"&nbsp;");
 		});
 	});
-};
+},
 
-Xonomy.harvestCache={};
-Xonomy.harvest=function() { //harvests the contents of an editor
+
+harvest() { //harvests the contents of an editor
 	//Returns xml-as-string.
 	var rootElement=$(".xonomy .element").first().toArray()[0];
 	var js=Xonomy.harvestElement(rootElement);
@@ -569,15 +608,16 @@ Xonomy.harvest=function() { //harvests the contents of an editor
 			type: "attribute",
 			name: key,
 			value: Xonomy.namespaces[key],
-			parent: js
+			parent: () => js,
+			htmlID: '' // TODO unnecessary 
 		});
 	}
 	return Xonomy.js2xml(js);
-}
-Xonomy.harvestElement=function(htmlElement: HTMLElement, jsParent?: XonomyElementInstance) {
+},
+harvestElement(htmlElement: Element, jsParent?: XonomyElementInstance) {
 	var htmlID=htmlElement.id;
 	if(!Xonomy.harvestCache[htmlID]) {
-		var js=new Xonomy.surrogate(jsParent);
+		var js: XonomyElementInstance=new Surrogate(jsParent);
 		js.type="element";
 		js.name=htmlElement.getAttribute("data-name");
 		/** @type {XonomyElementDefinition} */
@@ -586,64 +626,54 @@ Xonomy.harvestElement=function(htmlElement: HTMLElement, jsParent?: XonomyElemen
 		js.htmlID=htmlElement.id;
 		js.attributes=[];
 		var htmlAttributes=$(htmlElement).find(".tag.opening > .attributes").toArray()[0];
-		for(var i=0; i<htmlAttributes.childNodes.length; i++) {
-			var htmlAttribute=htmlAttributes.childNodes[i];
+		for(var i=0; i<htmlAttributes.children.length; i++) {
+			var htmlAttribute=htmlAttributes.children[i];
 			if($(htmlAttribute).hasClass("attribute")) js["attributes"].push(Xonomy.harvestAttribute(htmlAttribute, js));
 		}
 		js.children=[];
 		var htmlChildren=$(htmlElement).children(".children").toArray()[0];
-		for(var i=0; i<htmlChildren.childNodes.length; i++) {
-			var htmlChild=htmlChildren.childNodes[i];
+		for(var i=0; i<htmlChildren.children.length; i++) {
+			var htmlChild=htmlChildren.children[i];
 			if($(htmlChild).hasClass("element")) js["children"].push(Xonomy.harvestElement(htmlChild, js));
 			else if($(htmlChild).hasClass("textnode")) js["children"].push(Xonomy.harvestText(htmlChild, js));
 		}
 		js=Xonomy.enrichElement(js);
 		Xonomy.harvestCache[htmlID]=js;
 	}
-	return Xonomy.harvestCache[htmlID];
-};
-Xonomy.harvestAttribute=function(htmlAttribute: HTMLElement, jsParent: XonomyElementInstance) {
+	return Xonomy.harvestCache[htmlID] as XonomyElementInstance;
+},
+harvestAttribute(htmlAttribute: Element, jsParent?: XonomyElementInstance) {
 	var htmlID=htmlAttribute.id;
 	if(!Xonomy.harvestCache[htmlID]) {
-		var js = new Xonomy.surrogate(jsParent);
+		var js: XonomyAttributeInstance = new Surrogate(jsParent);
 		js.type = "attribute";
 		js.name = htmlAttribute.getAttribute("data-name");
 		js.htmlID = htmlAttribute.id;
 		js.value = htmlAttribute.getAttribute("data-value");
 		Xonomy.harvestCache[htmlID]=js;
 	}
-	return Xonomy.harvestCache[htmlID];
-}
+	return Xonomy.harvestCache[htmlID] as XonomyAttributeInstance;
+},
 
-Xonomy.surrogate=function(jsParent?: XonomyElementInstance) {
-	this.internalParent=jsParent;
-}
-Xonomy.surrogate.prototype.parent=function() {
-	if (!this.internalParent) {
-		this.internalParent=Xonomy.harvestParentOf(this);
-	}
-	return this.internalParent;
-}
-
-Xonomy.harvestText = function (htmlText: HTMLElement, jsParent: XonomyElementInstance) {
-	var js = new Xonomy.surrogate(jsParent);
+harvestText(htmlText: Element, jsParent?: XonomyElementInstance) {
+	var js: XonomyTextInstance = new Surrogate(jsParent);
 	js.type = "text";
 	js.htmlID = htmlText.id;
 	js.value = htmlText.getAttribute("data-value");
 	return js;
-}
-Xonomy.harvestParentOf=function(js: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance) {
+},
+/** Return the parent element harvest. The js argument is put in the element's attributes/children array instead of whatever is harvested there. */
+harvestParentOf(js: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance): null|XonomyElementInstance {
 	var jsParent=null;
 	var $parent=$("#"+js.htmlID).parent().closest(".element");
 	if($parent.toArray().length==1) {
 		jsParent=Xonomy.harvestElement($parent.toArray()[0]);
-		for(var i=0; i<jsParent.attributes.length; i++) if(jsParent.attributes[i].htmlID==js.htmlID) jsParent.attributes[i]=js;
-		for(var i=0; i<jsParent.children.length; i++) if(jsParent.children[i].htmlID==js.htmlID) jsParent.children[i]=js;
+		for(var i=0; i<jsParent.attributes.length; i++) if(jsParent.attributes[i].htmlID==js.htmlID && js.type === 'attribute') jsParent.attributes[i]=js;
+		for(var i=0; i<jsParent.children.length; i++) if(jsParent.children[i].htmlID==js.htmlID && js.type === 'element') jsParent.children[i]=js;
 	}
 	return jsParent;
-};
-
-Xonomy.render=function(data: string|Document, editor: string|HTMLElement, docSpec: XonomyDocSpec) { //renders the contents of an editor
+},
+render(data: string|Document|XonomyElementInstance, editor: string|HTMLElement, docSpec: XonomyDocSpec) { //renders the contents of an editor
 	//The data can be a Xonomy-compliant XML document, a Xonomy-compliant xml-as-string,
 	//or a Xonomy-compliant JavaScript object.
 	//The editor can be an HTML element, or the string ID of one.
@@ -670,7 +700,7 @@ Xonomy.render=function(data: string|Document, editor: string|HTMLElement, docSpe
 			data = $.parseXML('<entry/>');
 		}
 	}
-	if(data.documentElement) data=Xonomy.xml2js(data);
+	if(data instanceof Document) data=Xonomy.xml2js(data);
 
 	//Make sure editor refers to an HTML element, if it doesn't already:
 	if(typeof(editor)=="string") editor=document.getElementById(editor);
@@ -678,7 +708,7 @@ Xonomy.render=function(data: string|Document, editor: string|HTMLElement, docSpe
 	$(editor).addClass(Xonomy.mode);
 
 	$(editor).hide();
-	editor.innerHTML=Xonomy.renderElement(data, editor);
+	editor.innerHTML=Xonomy.renderElement(data);
 	$(editor).show();
 
 	if(docSpec.allowLayby){
@@ -708,9 +738,9 @@ Xonomy.render=function(data: string|Document, editor: string|HTMLElement, docSpe
 
 	Xonomy.refresh();
 	Xonomy.validate();
-};
+},
 
-Xonomy.renderElement=function(element: XonomyElementInstance) {
+renderElement(element: XonomyElementInstance) {
 	var htmlID=Xonomy.nextID();
 	Xonomy.verifyDocSpecElement(element.name);
 	var spec=Xonomy.docSpec.elements[element.name];
@@ -786,8 +816,8 @@ Xonomy.renderElement=function(element: XonomyElementInstance) {
 	html+='</div>';
 	element.htmlID = htmlID;
 	return html;
-};
-Xonomy.renderAttribute=function(attribute: XonomyAttributeInstance, optionalParentName?: string) {
+},
+renderAttribute(attribute: XonomyAttributeInstance, optionalParentName?: string) {
 	var htmlID=Xonomy.nextID();
 	var classNames="attribute";
 	var readonly=false;
@@ -834,8 +864,8 @@ Xonomy.renderAttribute=function(attribute: XonomyAttributeInstance, optionalPare
 	html+='</span>';
 	attribute.htmlID = htmlID;
 	return html;
-};
-Xonomy.renderText=function(text: XonomyTextInstance) {
+},
+renderText<T extends {value: string}>(text: T) {
 	var htmlID=Xonomy.nextID();
 	var classNames="textnode focusable";
 	if($.trim(text.value)=="") classNames+=" whitespace";
@@ -848,8 +878,8 @@ Xonomy.renderText=function(text: XonomyTextInstance) {
 	html+='</div>';
 	text.htmlID = htmlID;
 	return html;
-}
-Xonomy.renderDisplayText=function(text: string, displayText: string) {
+},
+renderDisplayText(text: string, displayText: string) {
 	var htmlID=Xonomy.nextID();
 	var classNames="textnode";
 	if($.trim(displayText)=="") classNames+=" whitespace";
@@ -860,13 +890,13 @@ Xonomy.renderDisplayText=function(text: string, displayText: string) {
 		html+='<span class="value" onclick="Xonomy.click(\''+htmlID+'\', \'text\')"><span class="insertionPoint"><span class="inside"></span></span><span class="dots"></span>'+Xonomy.textByLang(displayText)+'</span>';
 	html+='</div>';
 	return html;
-}
+},
 /** wrap text in some html to render it in the editor as a text node */
-Xonomy.chewText=function(txt: string) {
+chewText(txt: string) {
 	return "<span class='word focusable' onclick='if((event.ctrlKey||event.metaKey) && $(this).closest(\".element\").hasClass(\"hasInlineMenu\")) Xonomy.wordClick(this)'>" + txt + "</span>"
-};
+},
 /** @param c the span where the textnode is rendered in the editor */
-Xonomy.wordClick=function(c: HTMLElement) {
+wordClick(c: HTMLElement) {
 	var $element=$(c);
 	Xonomy.clickoff();
 	var isReadOnly=( $element.closest(".readonly").toArray().length>0 );
@@ -878,8 +908,8 @@ Xonomy.wordClick=function(c: HTMLElement) {
 			Xonomy.showBubble($(c).last()); //anchor bubble to the word
 		}
   }
-};
-Xonomy.wrap=function(htmlID: string, param: {template: string, placeholder: string}) {
+},
+wrap(htmlID: string, param: {template: string, placeholder: string}) {
 	Xonomy.clickoff();
 	Xonomy.destroyBubble();
 	var xml=param.template;
@@ -920,17 +950,17 @@ Xonomy.wrap=function(htmlID: string, param: {template: string, placeholder: stri
 		window.setTimeout(function(){ Xonomy.setFocus(newID, "openingTagName"); }, 100);
 	}
 	Xonomy.changed();
-};
+},
 /** remove an element node and replace it with its children */
-Xonomy.unwrap=function(htmlID: string) {
+unwrap(htmlID: string) {
 	var parentID=$("#"+htmlID)[0].parentElement.parentElement.id;
 	Xonomy.clickoff();
 	$("#"+htmlID).replaceWith($("#"+htmlID+" > .children > *"));
 	Xonomy.changed();
 	window.setTimeout(function(){ Xonomy.setFocus(parentID, "openingTagName");  }, 100);
-};
+},
 /** collapse/expand an xml node */
-Xonomy.plusminus=function(htmlID: string, forceExpand?: boolean) {
+plusminus(htmlID: string, forceExpand?: boolean) {
 	var $element=$("#"+htmlID);
 	var $children=$element.children(".children");
 	if($element.hasClass("collapsed")) {
@@ -949,9 +979,9 @@ Xonomy.plusminus=function(htmlID: string, forceExpand?: boolean) {
 			Xonomy.setFocus(Xonomy.currentHtmlId, "childrenCollapsed");
 		}
 	}, 300);
-};
+},
 /** update the small preview that is displayed for collapsed elements */
-Xonomy.updateCollapsoid=function(htmlID: string) {
+updateCollapsoid(htmlID: string) {
 	var $element=$("#"+htmlID);
 	var whisper="";
 	var elementName=$element.data("name");
@@ -972,11 +1002,10 @@ Xonomy.updateCollapsoid=function(htmlID: string) {
 	}
 	if(whisper=="" || !whisper) whisper="...";
 	$element.children(".childrenCollapsed").html(whisper);
-};
+},
 
-type XonomyWhat = 'openingTagName'|'closingTagName'|'attributeName'|'attributeValue'|'text'|'rollouter'|'warner'
-Xonomy.lastClickWhat="";
-Xonomy.click=function(htmlID: string, what: XonomyWhat) {
+
+click(htmlID: string, what: XonomyWhat) {
 	if(!Xonomy.notclick) {
 		Xonomy.clickoff();
 		Xonomy.lastClickWhat=what;
@@ -1010,7 +1039,7 @@ Xonomy.click=function(htmlID: string, what: XonomyWhat) {
 			var value=$("#"+htmlID).attr("data-value"); //obtain current value
 			var elName=$("#"+htmlID).closest(".element").attr("data-name");
 			Xonomy.verifyDocSpecAttribute(elName, name);
-			var spec=Xonomy.docSpec.elements[elName].attributes[name];
+			const spec=Xonomy.docSpec.elements[elName].attributes[name];
 			var content: string=spec.asker(value, spec.askerParameter, Xonomy.harvestAttribute(document.getElementById(htmlID))); //compose bubble content
 			if(content!="" && content!="<div class='menu'></div>") {
 				document.body.appendChild(Xonomy.makeBubble(content)); //create bubble
@@ -1028,7 +1057,7 @@ Xonomy.click=function(htmlID: string, what: XonomyWhat) {
 			$("#"+htmlID).addClass("current");
 			var value=$("#"+htmlID).attr("data-value"); //obtain current value
 			var elName=$("#"+htmlID).closest(".element").attr("data-name");
-			var spec=Xonomy.docSpec.elements[elName];
+			const spec=Xonomy.docSpec.elements[elName];
 			if (typeof(spec.asker) != "function") {
 				var content: string=Xonomy.askLongString(value, null, Xonomy.harvestElement($("#"+htmlID).closest(".element").toArray()[0])); //compose bubble content
 			} else {
@@ -1074,9 +1103,9 @@ Xonomy.click=function(htmlID: string, what: XonomyWhat) {
 		}
 		Xonomy.notclick=true;
 	}
-};
-Xonomy.notclick=false; //should the latest click-off event be ignored?
-Xonomy.clickoff=function() { //event handler for the document-wide click-off event.
+},
+
+clickoff(ev?: JQuery.ClickEvent) { //event handler for the document-wide click-off event.
 	if(!Xonomy.notclick) {
 		Xonomy.currentHtmlId=null;
 		Xonomy.currentFocus=null;
@@ -1085,17 +1114,17 @@ Xonomy.clickoff=function() { //event handler for the document-wide click-off eve
 		$(".xonomy .focused").removeClass("focused");
 	}
 	Xonomy.notclick=false;
-};
+},
 
-Xonomy.destroyBubble=function() {
+destroyBubble() {
 	if(document.getElementById("xonomyBubble")) {
 		var bubble=document.getElementById("xonomyBubble");
 		$(bubble).find(":focus").blur();
 		bubble.parentNode.removeChild(bubble);
 		if(Xonomy.keyboardEventCatcher) Xonomy.keyboardEventCatcher.focus();
 	}
-};
-Xonomy.makeBubble=function(content: string) {
+},
+makeBubble(content: string) {
 	Xonomy.destroyBubble();
 	var bubble=document.createElement("div");
 	bubble.id="xonomyBubble";
@@ -1104,8 +1133,8 @@ Xonomy.makeBubble=function(content: string) {
 			+"<div id='xonomyBubbleContent'>"+content+"</div>"
 		+"</div>";
 	return bubble;
-};
-Xonomy.showBubble=function($anchor: JQuery<HTMLElement>) {
+},
+showBubble($anchor: JQuery<HTMLElement>) {
 	var $bubble=$("#xonomyBubble");
 	var offset=$anchor.offset();
 	var screenWidth = $("body").width();
@@ -1168,9 +1197,9 @@ Xonomy.showBubble=function($anchor: JQuery<HTMLElement>) {
 			}
 		});
 	}
-};
-
-Xonomy.askString=function(defaultString: string, askerParameter: any, jsMe: XonomyElementInstance|XonomyTextInstance|XonomyAttributeInstance) {
+},
+/** Return html-as-string that contains a form that when submitted calls the Xonomy.answer function */
+askString(defaultString: string, askerParameter: any, jsMe: XonomyElementInstance|XonomyTextInstance|XonomyAttributeInstance) {
 	var width=($("body").width()*.5)-75
 	var html="";
 	html+="<form onsubmit='Xonomy.answer(this.val.value); return false'>";
@@ -1178,8 +1207,8 @@ Xonomy.askString=function(defaultString: string, askerParameter: any, jsMe: Xono
 		html+=" <input type='submit' value='OK'>";
 	html+="</form>";
 	return html;
-};
-Xonomy.askLongString=function(defaultString: string, askerParameter: any, jsMe: XonomyElementInstance|XonomyTextInstance|XonomyAttributeInstance) {
+},
+askLongString(defaultString: string, askerParameter?: any, jsMe?: XonomyElementInstance|XonomyTextInstance|XonomyAttributeInstance) {
 	var width=($("body").width()*.5)-75
 	var html="";
 	html+="<form onsubmit='Xonomy.answer(this.val.value); return false'>";
@@ -1187,14 +1216,14 @@ Xonomy.askLongString=function(defaultString: string, askerParameter: any, jsMe: 
 		html+="<div class='submitline'><input type='submit' value='OK'></div>";
 	html+="</form>";
 	return html;
-};
-Xonomy.askPicklist=function(defaultString: string, picklist: XonomyPickListOption[], jsMe: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance) {
+},
+askPicklist(defaultString: string, picklist: XonomyPickListOption[], jsMe: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance) {
 	var html="";
 	html+=Xonomy.pickerMenu(picklist, defaultString);
 	return html;
-};
+},
 /** open-ended picklist */
-Xonomy.askOpenPicklist=function(defaultString: string, picklist: XonomyPickListOption[]) {
+askOpenPicklist(defaultString: string, picklist: XonomyPickListOption[]) {
 	var isInPicklist=false;
     var html="";
 		html+=Xonomy.pickerMenu(picklist, defaultString);
@@ -1203,15 +1232,10 @@ Xonomy.askOpenPicklist=function(defaultString: string, picklist: XonomyPickListO
 		html+=" <input type='submit' value='OK'>";
 		html+="</form>";
     return html;
-};
+},
 
-type XonomyPickListOption = string|{
-	caption: string,
-	value: string,
-	displayValue?: string
-}
 
-Xonomy.askRemote=function(defaultString: string, param: {add?: XonomyPickListOption[], url: string, searchUrl: string, urlPlaceholder: string, createUrl: string}, jsMe: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance) {
+askRemote(defaultString: string, param: {add?: XonomyPickListOption[], url: string, searchUrl: string, urlPlaceholder: string, createUrl: string}, jsMe: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance) {
 	var html="";
 	if(param.searchUrl || param.createUrl) {
 		html+="<form class='overmenu' onsubmit='return Xonomy.remoteSearch(\""+Xonomy.xmlEscape(param.searchUrl, true)+"\", \""+Xonomy.xmlEscape(param.urlPlaceholder, true)+"\", \""+Xonomy.xmlEscape(Xonomy.jsEscape(defaultString))+"\")'>";
@@ -1226,9 +1250,9 @@ Xonomy.askRemote=function(defaultString: string, param: {add?: XonomyPickListOpt
 	});
 	Xonomy.lastAskerParam=param;
 	return html;
-};
-Xonomy.lastAskerParam=null;
-Xonomy.remoteSearch=function(searchUrl: string, urlPlaceholder: string, defaultString: string){
+},
+
+remoteSearch(searchUrl: string, urlPlaceholder: string, defaultString: string){
 	var text=$("#xonomyBubble input.textbox").val() as string;
 	searchUrl=searchUrl.replace(urlPlaceholder, encodeURIComponent(text));
 	$("#xonomyBubble .menu").replaceWith( Xonomy.wyc(searchUrl, function(picklist: XonomyPickListOption[]){
@@ -1238,20 +1262,20 @@ Xonomy.remoteSearch=function(searchUrl: string, urlPlaceholder: string, defaultS
 		return Xonomy.pickerMenu(items, defaultString);
 	}));
 	return false;
-};
-Xonomy.remoteCreate=function(createUrl: string, searchUrl: string, urlPlaceholder: string, defaultString: string){
+},
+remoteCreate(createUrl: string, searchUrl: string, urlPlaceholder: string, defaultString: string){
 	var text=$.trim($("#xonomyBubble input.textbox").val() as string);
 	if(text!="") {
 		createUrl=createUrl.replace(urlPlaceholder, encodeURIComponent(text));
 		searchUrl=searchUrl.replace(urlPlaceholder, encodeURIComponent(text));
 		$.ajax({url: createUrl, dataType: "text", method: "POST"}).done(function(data){
 			if(Xonomy.wycCache[searchUrl]) delete Xonomy.wycCache[searchUrl];
-			$("#xonomyBubble .menu").replaceWith( Xonomy.wyc(searchUrl, function(picklist: XonomyPickListOption){ return Xonomy.pickerMenu(picklist, defaultString); }) );
+			$("#xonomyBubble .menu").replaceWith( Xonomy.wyc(searchUrl, function(picklist: XonomyPickListOption[]){ return Xonomy.pickerMenu(picklist, defaultString); }) );
 		});
 	}
 	return false;
-};
-Xonomy.pickerMenu=function(picklist: XonomyPickListOption[], defaultString: string){
+},
+pickerMenu(picklist: XonomyPickListOption[], defaultString: string){
 	var html="";
 	html+="<div class='menu'>";
 	for(var i=0; i<picklist.length; i++) {
@@ -1273,11 +1297,9 @@ Xonomy.pickerMenu=function(picklist: XonomyPickListOption[], defaultString: stri
 	}
 	html+="</div>";
 	return html;
-};
+},
 
-Xonomy.wycLastID=0;
-Xonomy.wycCache={};1
-Xonomy.wyc=function<T>(url: string, callback: (v: T) => string){ //a "when-you-can" function for delayed rendering: gets json from url, passes it to callback, and delayed-returns html-as-string from callback
+wyc<T>(url: string, callback: (v: T) => string){ //a "when-you-can" function for delayed rendering: gets json from url, passes it to callback, and delayed-returns html-as-string from callback
 	Xonomy.wycLastID++;
 	var wycID="xonomy_wyc_"+Xonomy.wycLastID;
 	if(Xonomy.wycCache[url]) return callback(Xonomy.wycCache[url]);
@@ -1286,21 +1308,20 @@ Xonomy.wyc=function<T>(url: string, callback: (v: T) => string){ //a "when-you-c
 			Xonomy.wycCache[url]=data;
 	});
 	return "<span class='wyc' id='"+wycID+"'></span>";
-};
+},
 
-Xonomy.toggleSubmenu=function(menuItem: HTMLElement){
+toggleSubmenu(menuItem: HTMLElement){
 	var $menuItem=$(menuItem);
 	if($menuItem.hasClass("expanded")){ $menuItem.find(".submenu").first().slideUp("fast", function(){$menuItem.removeClass("expanded");}); }
 	else { $menuItem.find(".submenu").first().slideDown("fast", function(){$menuItem.addClass("expanded");}); };
-}
+},
 /**
  * @param htmlID id of the node for which to render the menu
  * @param items menu options
  * @param 
  */
-Xonomy.internalMenu=function(htmlID: string, items: XonomyMenuAction[], harvest: (el: HTMLElement) => XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance, getter: (indices: number[]) => string, indices: number[]) {
+internalMenu(htmlID: string, items: XonomyMenuAction[], harvest: (el: HTMLElement) => XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance, getter: (indices: number[]) => string, indices: number[] = []) {
 	Xonomy.harvestCache={};
-	indices = indices || [];
 	var jsMe=harvest(document.getElementById(htmlID));
 	var fragments = items.map(function (item, i) {
 		Xonomy.verifyDocSpecMenuItem(item);
@@ -1331,8 +1352,8 @@ Xonomy.internalMenu=function(htmlID: string, items: XonomyMenuAction[], harvest:
 	return fragments.length
 		? "<div class='"+cls+"'>"+fragments.join("")+"</div>"
 		: "";
-};
-Xonomy.attributeMenu=function(htmlID: string){
+},
+attributeMenu(htmlID: string){
 	Xonomy.harvestCache={};
 	var name=$("#"+htmlID).attr("data-name"); //obtain attribute's name
 	var elName=$("#"+htmlID).closest(".element").attr("data-name"); //obtain element's name
@@ -1342,8 +1363,8 @@ Xonomy.attributeMenu=function(htmlID: string){
 		return 'Xonomy.docSpec.elements["'+elName+'"].attributes["'+name+'"].menu['+indices.join('].menu[')+']';
 	}
 	return Xonomy.internalMenu(htmlID, spec.menu, Xonomy.harvestAttribute, getter);
-};
-Xonomy.elementMenu=function(htmlID: string) {
+},
+elementMenu(htmlID: string) {
 	Xonomy.harvestCache={};
 	var elName=$("#"+htmlID).attr("data-name"); //obtain element's name
 	var spec=Xonomy.docSpec.elements[elName];
@@ -1351,8 +1372,8 @@ Xonomy.elementMenu=function(htmlID: string) {
 		return 'Xonomy.docSpec.elements["'+elName+'"].menu['+indices.join('].menu[')+']';
 	}
 	return Xonomy.internalMenu(htmlID, spec.menu, Xonomy.harvestElement, getter);
-};
-Xonomy.inlineMenu=function(htmlID: string) {
+},
+inlineMenu(htmlID: string) {
 	Xonomy.harvestCache={};
 	var elName=$("#"+htmlID).attr("data-name"); //obtain element's name
 	var spec=Xonomy.docSpec.elements[elName];
@@ -1360,28 +1381,28 @@ Xonomy.inlineMenu=function(htmlID: string) {
 		return 'Xonomy.docSpec.elements["'+elName+'"].inlineMenu['+indices.join('].menu[')+']';
 	}
 	return Xonomy.internalMenu(htmlID, spec.inlineMenu, Xonomy.harvestElement, getter);
-};
-Xonomy.callMenuFunction=function(menuItem: XonomyMenuAction, htmlID: string) {
+},
+callMenuFunction(menuItem: XonomyMenuAction, htmlID: string) {
 	menuItem.action(htmlID, menuItem.actionParameter);
-};
-Xonomy.formatCaption=function(caption: string) {
+},
+formatCaption(caption: string) {
 	caption=caption.replace(/\<(\/?)([^\>\/]+)(\/?)\>/g, "<span class='techno'><span class='punc'>&lt;$1</span><span class='elName'>$2</span><span class='punc'>$3&gt;</span></span>");
 	caption=caption.replace(/\@"([^\"]+)"/g, "<span class='techno'><span class='punc'>\"</span><span class='atValue'>$1</span><span class='punc'>\"</span></span>");
 	caption=caption.replace(/\@([^ =]+)=""/g, "<span class='techno'><span class='atName'>$1</span><span class='punc'>=\"</span><span class='punc'>\"</span></span>");
 	caption=caption.replace(/\@([^ =]+)="([^\"]+)"/g, "<span class='techno'><span class='atName'>$1</span><span class='punc'>=\"</span><span class='atValue'>$2</span><span class='punc'>\"</span></span>");
 	caption=caption.replace(/\@([^ =]+)/g, "<span class='techno'><span class='atName'>$1</span></span>");
 	return caption;
-};
+},
 
-Xonomy.deleteAttribute=function(htmlID: string, parameter: any) {
+deleteAttribute(htmlID: string, parameter: any) {
 	Xonomy.clickoff();
 	var obj=document.getElementById(htmlID);
 	var parentID=obj.parentElement.parentElement.parentElement.id;
 	obj.parentNode.removeChild(obj);
 	Xonomy.changed();
 	window.setTimeout(function(){ Xonomy.setFocus(parentID, "openingTagName"); }, 100);
-};
-Xonomy.deleteElement=function(htmlID: string, parameter: any) {
+},
+deleteElement(htmlID: string, parameter: any) {
 	Xonomy.clickoff();
 	var obj=document.getElementById(htmlID);
 	var parentID=(obj.parentNode.parentNode as HTMLElement).id;
@@ -1393,8 +1414,8 @@ Xonomy.deleteElement=function(htmlID: string, parameter: any) {
 			window.setTimeout(function(){ Xonomy.setFocus(parentID, "openingTagName");  }, 100);
 		}
 	});
-};
-Xonomy.newAttribute=function(htmlID: string, parameter: {name: string, value: string}) {
+},
+newAttribute(htmlID: string, parameter: {name: string, value: string}) {
 	Xonomy.clickoff();
 	var $element=$("#"+htmlID);
 	var html=Xonomy.renderAttribute({type: "attribute", name: parameter.name, value: parameter.value}, $element.data("name"));
@@ -1408,8 +1429,8 @@ Xonomy.newAttribute=function(htmlID: string, parameter: {name: string, value: st
 		}
 	}
 	if(parameter.value=="") Xonomy.click($(html).prop("id"), "attributeValue"); else Xonomy.setFocus($(html).prop("id"), "attributeValue");
-};
-Xonomy.newElementChild=function(htmlID: string, parameter: string|Document) {
+},
+newElementChild(htmlID: string, parameter: string|Document) {
 	Xonomy.clickoff();
 	var jsElement=Xonomy.harvestElement(document.getElementById(htmlID));
 	var html=Xonomy.renderElement(Xonomy.xml2js(parameter, jsElement));
@@ -1420,8 +1441,8 @@ Xonomy.newElementChild=function(htmlID: string, parameter: string|Document) {
 	Xonomy.changed();
 	$html.fadeIn();
 	window.setTimeout(function(){ Xonomy.setFocus($html.prop("id"), "openingTagName"); }, 100);
-};
-Xonomy.elementReorder=function(htmlID: string){
+},
+elementReorder(htmlID: string){
 	var that=document.getElementById(htmlID);
 	var elSpec=Xonomy.docSpec.elements[that.getAttribute("data-name")];
 	if(elSpec.mustBeBefore) { //is it after an element it cannot be after? then move it up until it's not!
@@ -1452,8 +1473,8 @@ Xonomy.elementReorder=function(htmlID: string){
 			}
 		} while(!ok)
 	}
-};
-Xonomy.newElementBefore=function(htmlID: string, parameter: string|Document) {
+},
+newElementBefore(htmlID: string, parameter: string|Document) {
 	Xonomy.clickoff();
 	var jsElement=Xonomy.harvestElement(document.getElementById(htmlID));
 	var html=Xonomy.renderElement(Xonomy.xml2js(parameter, jsElement.parent()));
@@ -1463,8 +1484,8 @@ Xonomy.newElementBefore=function(htmlID: string, parameter: string|Document) {
 	Xonomy.changed();
 	$html.fadeIn();
 	window.setTimeout(function(){ Xonomy.setFocus($html.prop("id"), "openingTagName"); }, 100);
-};
-Xonomy.newElementAfter=function(htmlID: string, parameter: string|Document) {
+},
+newElementAfter(htmlID: string, parameter: string|Document) {
 	Xonomy.clickoff();
 	var jsElement=Xonomy.harvestElement(document.getElementById(htmlID));
 	var html=Xonomy.renderElement(Xonomy.xml2js(parameter, jsElement.parent()));
@@ -1474,8 +1495,8 @@ Xonomy.newElementAfter=function(htmlID: string, parameter: string|Document) {
 	Xonomy.changed();
 	$html.fadeIn();
 	window.setTimeout(function(){ Xonomy.setFocus($html.prop("id"), "openingTagName"); }, 100);
-};
-Xonomy.replace=function(htmlID: string, jsNode: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance) {
+},
+replace(htmlID: string, jsNode: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance) {
 	var what=Xonomy.currentFocus;
 	Xonomy.clickoff();
 	var html="";
@@ -1485,9 +1506,14 @@ Xonomy.replace=function(htmlID: string, jsNode: XonomyElementInstance|XonomyAttr
 	$("#"+htmlID).replaceWith(html);
 	Xonomy.changed();
 	window.setTimeout(function(){ Xonomy.setFocus($(html).prop("id"), what); }, 100);
-};
+},
 // TODO document this
-Xonomy.editRaw=function(htmlID: string, parameter: any) {
+editRaw(htmlID: string, parameter: {
+	fromJs(inst: XonomyElementInstance): string, 
+	fromXml(xml: string): string
+	toJs(val: string, jsElement: XonomyElementInstance): XonomyElementInstance,
+	toXml(val: string, jsElement: XonomyElementInstance): string
+}) {
 	var div=document.getElementById(htmlID);
 	var jsElement: XonomyElementInstance=Xonomy.harvestElement(div);
 	if(parameter.fromJs) var txt=parameter.fromJs( jsElement );
@@ -1508,8 +1534,8 @@ Xonomy.editRaw=function(htmlID: string, parameter: any) {
 		Xonomy.changed();
 		window.setTimeout(function(){ Xonomy.setFocus($(html).prop("id"), "openingTagName"); }, 100);
 	};
-};
-Xonomy.duplicateElement=function(htmlID: string) {
+},
+duplicateElement(htmlID: string) {
 	Xonomy.clickoff();
 	var html=document.getElementById(htmlID).outerHTML;
 		  html=html.replace(/ id=['"]/g, function(x){return x+"d_"});
@@ -1520,8 +1546,8 @@ Xonomy.duplicateElement=function(htmlID: string) {
 	Xonomy.changed();
 	$html.fadeIn();
 	window.setTimeout(function(){ Xonomy.setFocus($html.prop("id"), "openingTagName"); }, 100);
-};
-Xonomy.moveElementUp=function(htmlID: string){
+},
+moveElementUp(htmlID: string){
 	Xonomy.clickoff();
 	var $me=$("#"+htmlID);
 	if($me.closest(".layby > .content").length==0) {
@@ -1536,8 +1562,8 @@ Xonomy.moveElementUp=function(htmlID: string){
 		Xonomy.dragend();
 	}
 	window.setTimeout(function(){ Xonomy.setFocus(htmlID, "openingTagName"); }, 100);
-};
-Xonomy.moveElementDown=function(htmlID: string){
+},
+moveElementDown(htmlID: string){
 	Xonomy.clickoff();
 	var $me=$("#"+htmlID);
 	if($me.closest(".layby > .content").length==0) {
@@ -1552,8 +1578,8 @@ Xonomy.moveElementDown=function(htmlID: string){
 		Xonomy.dragend();
 	}
 	window.setTimeout(function(){ Xonomy.setFocus(htmlID, "openingTagName"); }, 100);
-};
-Xonomy.canMoveElementUp=function(htmlID: string){
+},
+canMoveElementUp(htmlID: string){
 	var ret=false;
 	var $me=$("#"+htmlID);
 	if($me.closest(".layby > .content").length==0) {
@@ -1564,8 +1590,8 @@ Xonomy.canMoveElementUp=function(htmlID: string){
 		Xonomy.dragend();
 	}
 	return ret;
-};
-Xonomy.canMoveElementDown=function(htmlID: string){
+},
+canMoveElementDown(htmlID: string){
 	var ret=false;
 	var $me=$("#"+htmlID);
 	if($me.closest(".layby > .content").length==0) {
@@ -1576,20 +1602,20 @@ Xonomy.canMoveElementDown=function(htmlID: string){
 		Xonomy.dragend();
 	}
 	return ret;
-};
-Xonomy.mergeWithPrevious=function(htmlID: string, parameter: any){
+},
+mergeWithPrevious(htmlID: string, parameter: any){
 	var domDead=document.getElementById(htmlID);
 	var elDead=Xonomy.harvestElement(domDead);
 	var elLive=elDead.getPrecedingSibling();
 	Xonomy.mergeElements(elDead, elLive);
-};
-Xonomy.mergeWithNext=function(htmlID: string, parameter: any){
+},
+mergeWithNext(htmlID: string, parameter: any){
 	var domDead=document.getElementById(htmlID);
 	var elDead=Xonomy.harvestElement(domDead);
 	var elLive=elDead.getFollowingSibling();
 	Xonomy.mergeElements(elDead, elLive);
-};
-Xonomy.mergeElements=function(elDead: XonomyElementInstance, elLive: XonomyElementInstance){
+},
+mergeElements(elDead: XonomyElementInstance, elLive: XonomyElementInstance){
 	Xonomy.clickoff();
 	var domDead=document.getElementById(elDead.htmlID);
 	if(elLive && elLive.type=="element") {
@@ -1633,8 +1659,8 @@ Xonomy.mergeElements=function(elDead: XonomyElementInstance, elLive: XonomyEleme
 	} else {
 		window.setTimeout(function(){ Xonomy.setFocus(elDead.htmlID, "openingTagName"); }, 100);
 	}
-};
-Xonomy.deleteEponymousSiblings=function(htmlID: string, parameter: any) {
+},
+deleteEponymousSiblings(htmlID: string, parameter: any) {
 	var what=Xonomy.currentFocus;
 	Xonomy.clickoff();
 	var obj=document.getElementById(htmlID);
@@ -1651,9 +1677,9 @@ Xonomy.deleteEponymousSiblings=function(htmlID: string, parameter: any) {
 	}
 	Xonomy.changed();
 	window.setTimeout(function(){ Xonomy.setFocus(htmlID, what);  }, 100);
-};
+},
 
-Xonomy.insertDropTargets=function(htmlID: string){
+insertDropTargets(htmlID: string){
 	var $element=$("#"+htmlID);
 	$element.addClass("dragging");
 	var elementName=$element.attr("data-name");
@@ -1722,9 +1748,9 @@ Xonomy.insertDropTargets=function(htmlID: string){
 			}
 		}
 	}
-};
-Xonomy.draggingID=null; //what are we dragging?
-Xonomy.drag=function(ev: DragEvent) { //called when dragging starts
+},
+
+drag(ev: DragEvent) { //called when dragging starts
 	// Wrapping all the code into a timeout handler is a workaround for a Chrome browser bug
 	// (if the DOM is manipulated in the 'dragStart' event then 'dragEnd' event is sometimes fired immediately)
 	//
@@ -1739,8 +1765,8 @@ Xonomy.drag=function(ev: DragEvent) { //called when dragging starts
 		Xonomy.draggingID=htmlID;
 		Xonomy.refresh();
 	}, 10);
-};
-Xonomy.dragOver=function(ev: DragEvent) {
+},
+dragOver(ev: DragEvent) {
 	ev.preventDefault();
 	ev.dataTransfer.dropEffect="move"; //only allow moving (and not eg. copying]
 	if($(ev.currentTarget).hasClass("layby")){
@@ -1748,16 +1774,16 @@ Xonomy.dragOver=function(ev: DragEvent) {
 	} else {
 		$((ev.target as HTMLElement).parentNode).addClass("activeDropper");
 	}
-};
-Xonomy.dragOut=function(ev: DragEvent) {
+},
+dragOut(ev: DragEvent) {
 	ev.preventDefault();
 	if($(ev.currentTarget).hasClass("layby")){
 		$(ev.currentTarget).removeClass("activeDropper");
 	} else {
 		$(".xonomy .activeDropper").removeClass("activeDropper");
 	}
-};
-Xonomy.drop=function(ev: DragEvent) {
+},
+drop(ev: DragEvent) {
 	ev.preventDefault();
 	var node=document.getElementById(Xonomy.draggingID); //the thing we are moving
 	if($(ev.currentTarget).hasClass("layby")) {
@@ -1771,42 +1797,42 @@ Xonomy.drop=function(ev: DragEvent) {
 	}
 	Xonomy.openCloseLayby();
 	Xonomy.recomputeLayby();
-};
-Xonomy.dragend=function(ev: DragEvent) {
+},
+dragend(ev?: JQuery.DragEndEvent) {
 	$(".xonomy .attributeDropper").remove();
 	$(".xonomy .elementDropper").remove();
 	$(".xonomy .dragging").removeClass("dragging");
 	Xonomy.refresh();
 	$(".xonomy .layby").removeClass("activeDropper");
-};
+},
 
-Xonomy.openCloseLayby=function(){ //open the layby if it's full, close it if it's empty
+openCloseLayby(){ //open the layby if it's full, close it if it's empty
 	if($(".xonomy .layby > .content > *").length>0){
 		$(".xonomy .layby").removeClass("closed").addClass("open");
 	} else {
 		$(".xonomy .layby").removeClass("open").addClass("closed");
 	}
-};
-Xonomy.openLayby=function(){
+},
+openLayby(){
 	$(".xonomy .layby").removeClass("closed").addClass("open");
-};
-Xonomy.closeLayby=function(){
+},
+closeLayby(){
 	window.setTimeout(function(){
 		$(".xonomy .layby").removeClass("open").addClass("closed");
 	}, 10);
-};
-Xonomy.emptyLayby=function(){
+},
+emptyLayby(){
 	$(".xonomy .layby .content").html("");
 	$(".xonomy .layby").removeClass("nonempty").addClass("empty");
-};
-Xonomy.recomputeLayby=function(){
+},
+recomputeLayby(){
 	if($(".xonomy .layby > .content > *").length>0){
 		$(".xonomy .layby").removeClass("empty").addClass("nonempty");
 	} else {
 		$(".xonomy .layby").removeClass("nonempty").addClass("empty");
 	}
-}
-Xonomy.newElementLayby=function(xml: string|Document) {
+},
+newElementLayby(xml: string|Document) {
 	Xonomy.clickoff();
 	var html=Xonomy.renderElement(Xonomy.xml2js(xml));
 	var $html=$(html).hide();
@@ -1815,15 +1841,15 @@ Xonomy.newElementLayby=function(xml: string|Document) {
 	$html.fadeIn();
 	Xonomy.openCloseLayby();
 	Xonomy.recomputeLayby();
-};
+},
 
-Xonomy.changed=function(jsElement?: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance) { //called when the document changes
+changed(jsElement?: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance) { //called when the document changes
 	Xonomy.harvestCache={};
 	Xonomy.refresh();
 	Xonomy.validate();
 	Xonomy.docSpec.onchange(jsElement); //report that the document has changed
-};
-Xonomy.validate=function() {
+},
+validate() {
 	var js=Xonomy.harvestElement($(".xonomy .element").toArray()[0], null);
 	$(".xonomy .invalid").removeClass("invalid");
 	Xonomy.warnings=[];
@@ -1832,10 +1858,10 @@ Xonomy.validate=function() {
 		var warning=Xonomy.warnings[iWarning];
 		$("#"+warning.htmlID).addClass("invalid");
 	}
-};
-Xonomy.warnings=[]; //array of {htmlID: "", text: ""}
+},
 
-Xonomy.textByLang=function(str: string) {
+
+textByLang(str: string) {
 	//str = eg. "en: Delete | de: Löschen | fr: Supprimer"
 	if(!str) str="";
 	var ret=str;
@@ -1848,12 +1874,10 @@ Xonomy.textByLang=function(str: string) {
 	}
 	ret=$.trim(ret);
 	return ret;
-};
+},
 
-Xonomy.currentHtmlId=null as null|string;
-Xonomy.currentFocus=null as null|XonomyWhat;
-Xonomy.keyNav=false;
-Xonomy.startKeyNav=function(keyboardEventCatcher: string|HTMLElement, scrollableContainer: string|HTMLElement){
+
+startKeyNav(keyboardEventCatcher: string|HTMLElement, scrollableContainer: string|HTMLElement){
 	Xonomy.keyNav=true;
 	var $keyboardEventCatcher=$(keyboardEventCatcher as any); if(!keyboardEventCatcher) $keyboardEventCatcher=$(".xonomy");
 	var $scrollableContainer=$(scrollableContainer as any); if(!scrollableContainer) $scrollableContainer=$keyboardEventCatcher;
@@ -1862,8 +1886,8 @@ Xonomy.startKeyNav=function(keyboardEventCatcher: string|HTMLElement, scrollable
 	$(document).on("keydown", function(e) { if([32, 37, 38, 39, 40].indexOf(e.keyCode)>-1 && $("input:focus, select:focus, textarea:focus").length==0) e.preventDefault(); }); //prevent default browser scrolling on arrow keys
 	Xonomy.keyboardEventCatcher=$keyboardEventCatcher;
 	Xonomy.scrollableContainer=$scrollableContainer;
-};
-Xonomy.setFocus=function(htmlID: string, what: XonomyWhat){
+},
+setFocus(htmlID: string, what: XonomyWhat){
 	if(Xonomy.keyNav) {
 		$(".xonomy .current").removeClass("current");
 		$(".xonomy .focused").removeClass("focused");
@@ -1876,8 +1900,8 @@ Xonomy.setFocus=function(htmlID: string, what: XonomyWhat){
 		if(Xonomy.currentFocus=="childrenCollapsed") $("#"+htmlID+" > .childrenCollapsed").last().addClass("focused");
 		if(Xonomy.currentFocus=="rollouter") $("#"+htmlID+" > .tag.opening > .rollouter").last().addClass("focused");
 	}
-};
-Xonomy.key=function(event: JQuery.Event){
+},
+key(event: JQuery.Event){
 	if(!Xonomy.notKeyUp) {
 		if(!event.shiftKey && !$("#xonomyBubble").length ) {
 			if(event.which==27) { //escape key
@@ -1939,8 +1963,8 @@ Xonomy.key=function(event: JQuery.Event){
 		}
 	}
 	Xonomy.notKeyUp=false;
-};
-Xonomy.keyboardMenu=function(event: JQuery.Event){
+},
+keyboardMenu(event: JQuery.Event){
 	Xonomy.harvestCache={};
 	var $obj=$("#"+Xonomy.currentHtmlId);
 	var jsMe: null|XonomyElementInstance|XonomyAttributeInstance=null;
@@ -1976,7 +2000,7 @@ Xonomy.keyboardMenu=function(event: JQuery.Event){
 	return false;
 },
 
-Xonomy.goDown=function(){
+goDown(){
 	if(Xonomy.currentFocus!="openingTagName" && Xonomy.currentFocus!="closingTagName" && Xonomy.currentFocus!="text") {
 		Xonomy.goRight();
 	} else {
@@ -1998,8 +2022,8 @@ Xonomy.goDown=function(){
 		if($next.hasClass("closing")) Xonomy.setFocus($next.closest(".element").prop("id"), "closingTagName");
 		if($next.hasClass("textnode")) Xonomy.setFocus($next.prop("id"), "text");
 	}
-};
-Xonomy.goUp=function(){
+},
+goUp(){
 	if(Xonomy.currentFocus!="openingTagName" && Xonomy.currentFocus!="closingTagName" && Xonomy.currentFocus!="text") {
 		Xonomy.goLeft();
 	} else {
@@ -2026,8 +2050,8 @@ Xonomy.goUp=function(){
 			if($next.hasClass("textnode")) Xonomy.setFocus($next.prop("id"), "text");
 		}
 	}
-};
-Xonomy.goRight=function(){
+},
+goRight(){
 	var $el=$("#"+Xonomy.currentHtmlId);
 	var $me=$el;
 	if(Xonomy.currentFocus=="openingTagName") var $me=$el.find(".tag.opening").first();
@@ -2047,8 +2071,8 @@ Xonomy.goRight=function(){
 	if($next.hasClass("textnode")) Xonomy.setFocus($next.prop("id"), "text");
 	if($next.hasClass("childrenCollapsed")) Xonomy.setFocus($next.closest(".element").prop("id"), "childrenCollapsed");
 	if($next.hasClass("rollouter")) Xonomy.setFocus($next.closest(".element").prop("id"), "rollouter");
-};
-Xonomy.goLeft=function(){
+},
+goLeft(){
 	var $el=$("#"+Xonomy.currentHtmlId);
 	var $me=$el;
 	if(Xonomy.currentFocus=="openingTagName") var $me=$el.find(".tag.opening").first();
@@ -2068,4 +2092,5 @@ Xonomy.goLeft=function(){
 	if($next.hasClass("textnode")) Xonomy.setFocus($next.prop("id"), "text");
 	if($next.hasClass("childrenCollapsed")) Xonomy.setFocus($next.closest(".element").prop("id"), "childrenCollapsed");
 	if($next.hasClass("rollouter")) Xonomy.setFocus($next.closest(".element").prop("id"), "rollouter");
-};
+},
+}
