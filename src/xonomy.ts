@@ -5,39 +5,6 @@
 // If we don't some code may not compile.
 // See https://github.com/microsoft/TypeScript/issues/12815#issuecomment-266356277
 
-type XonomyElementInstance = {
-	type: 'element';
-	/** implementation detail */
-	internalParent?: XonomyElementInstance;
-	
-	/**  more like an id, does not have to equal elementName */ 
-	name: string
-	/**  name of the xml element. */ 
-	elementName: string
-	htmlID: string
-	parent(): XonomyElementInstance|undefined
-	attributes: XonomyAttributeInstance[]
-	children: Array<XonomyElementInstance|XonomyTextInstance>
-	hasAttribute(name: string): boolean
-	getAttribute(name: string): XonomyAttributeInstance
-	/**  returns the value of the attribute with name, returns the second (default) if no such attribute exists */ 
-	getAttributeValue(name: string, ifNull?: string): string
-	/**  returns true if at least one child element exists */ 
-	hasElements(): boolean
-	hasChildElement(elementID: string): boolean
-	/**  returns all child text concatenated together, '' is returned if no child text is present */ 
-	getText(): string
-	/**  get all child elements with name */ 
-	getChildElements(elementID: string): Array<XonomyElementInstance|XonomyTextInstance>
-	/**  get all descandants with name */ 
-	getDescendantElements(elementID: string): XonomyElementInstance[]
-	getPrecedingSibling(): XonomyElementInstance|null;
-	getFollowingSibling(): XonomyElementInstance|null;
-	setAttribute(name: string, value: string): void
-	/**  append the text as XonomyTextInstance to this element's children. does not update the renderer */ 
-	addText(text: string): void
-}
-
 type XonomyAttributeInstance = {
 	type: 'attribute'
 	name: string
@@ -167,6 +134,70 @@ class Surrogate {
 	) {}
 }
 
+class XonomyElementInstance {
+	readonly type: "element"
+	readonly attributes: XonomyAttributeInstance[] = [];
+	readonly children: Array<XonomyElementInstance|XonomyTextInstance> = [];
+
+	constructor(
+		public readonly internalParent: XonomyElementInstance|undefined,
+		public readonly name: string,
+		public readonly elementName: string,
+		public htmlID = undefined as undefined|string
+	) {}
+
+	parent(): XonomyElementInstance { return this.internalParent; }
+	
+	hasAttribute(name: string): boolean { return this.attributes.some(att => att.name === name); }
+	getAttribute(name: string): XonomyAttributeInstance { return this.attributes.find(att => att.name === name); }
+	getAttributeValue(name: string, ifNull?: string): string { return this.getAttribute(name)?.value || ifNull }
+	hasElements(): boolean { return this.children.some(c => c.type === 'element'); }
+	hasChildElement(elementID: string): boolean { return this.children.some(c => c.htmlID === elementID && c.type === 'element'); }
+	getText(): string { return this.children.map(c => c.type === 'text' ? c.value : c.getText()).join(''); }
+	getChildElements(elementID: string): XonomyElementInstance[] { return this.children.filter((c): c is XonomyElementInstance => c.type === 'element' && c.name === elementID); }
+	getDescendantElements(elementID: string): XonomyElementInstance[] { return this.children.flatMap(c => c.type === 'element' ? [c, ...c.getDescendantElements(elementID)] : []); }
+	getPrecedingSibling(): null|XonomyElementInstance {
+		if (!this.internalParent) {
+			let prevSibling = null;
+			for (const sib of this.internalParent.children) {
+				if (sib === this) return prevSibling;
+				else if (sib.type === 'element') prevSibling = sib; // only return element siblings
+			}
+		}
+		return null; // no parent, or we didn't find ourselves in the parent...
+	}
+	getFollowingSibling(): null|XonomyElementInstance|XonomyTextInstance {
+		if (this.internalParent) {
+			let seenSelf = false;
+			for (const sib of this.internalParent.children) {
+				if (seenSelf && sib.type === 'element') return sib; // only return element siblings
+				else seenSelf = seenSelf || sib === this; // don't reset seenSelf
+			}
+		}
+		return null; // no parent, or we didn't find ourselves in the parent...
+	}
+	setAttribute(name: string, value: string): void {
+		const self = this;
+		if(this.hasAttribute(name)) this.getAttribute(name).value=value;
+		else this.attributes.push({
+			type: "attribute",
+			name: name,
+			value: value,
+			htmlID: null,
+			parent() { return self; }
+		});
+	}
+	addText(text: string): void {
+		const self = this;
+		this.children.push({
+			htmlID: null,
+			type: 'text',
+			value: text,
+			parent() { return self; }
+		});
+	}
+}
+
 const Xonomy = {
 	lang: "", //"en"|"de"|fr"| ...
 	mode: "nerd" as 'nerd'|'laic', //"nerd"|"laic"
@@ -243,12 +274,12 @@ xml2js(xml: string|Document|Element, jsParent?: XonomyElementInstance) {
 	if(typeof(xml)=="string") xml=$.parseXML(xml);
 	if('documentElement' in xml) xml=xml.documentElement;
 
-	var js: XonomyElementInstance =new Surrogate(jsParent);
-	js.type="element";
-	js.elementName=xml.nodeName;
-	js.name=Xonomy.docSpec.getElementId(js.elementName, jsParent ? jsParent.name : undefined);
-	js.htmlID="";
-	js.attributes=[];
+	var js = new XonomyElementInstance(
+		jsParent,
+		Xonomy.docSpec.getElementId(xml.nodeName, jsParent ? jsParent.name : undefined),
+		xml.nodeName,
+	);
+	
 	for(var i=0; i<xml.attributes.length; i++) {
 		var attr=xml.attributes[i];
 		if(!Xonomy.isNamespaceDeclaration(attr.nodeName)) {
@@ -259,7 +290,6 @@ xml2js(xml: string|Document|Element, jsParent?: XonomyElementInstance) {
 			Xonomy.namespaces[attr.nodeName]=attr.value;
 		}
 	}
-	js.children=[];
 	for(var i=0; i<xml.childNodes.length; i++) {
 		var child=xml. childNodes[i];
 		if(child.nodeType==1) { //element node
@@ -269,7 +299,6 @@ xml2js(xml: string|Document|Element, jsParent?: XonomyElementInstance) {
 			js["children"].push({type: "text", value: child.nodeValue, htmlID: "", parent: function(){return js}, });
 		}
 	}
-	js=Xonomy.enrichElement(js);
 	return js;
 },
 js2xml(js: XonomyElementInstance|XonomyTextInstance|XonomyAttributeInstance) {
@@ -302,115 +331,6 @@ js2xml(js: XonomyElementInstance|XonomyTextInstance|XonomyAttributeInstance) {
 		}
 		return xml;
 	}
-},
-enrichElement(jsElement: XonomyElementInstance) {
-	jsElement.hasAttribute=function(name) {
-		var ret=false;
-		for(var i=0; i<this.attributes.length; i++) {
-			if(this.attributes[i].name==name) ret=true;
-		}
-		return ret;
-	};
-	jsElement.getAttribute=function(name) {
-		var ret=null;
-		for(var i=0; i<this.attributes.length; i++) {
-			if(this.attributes[i].name==name) ret=this.attributes[i];
-		}
-		return ret;
-	};
-	jsElement.getAttributeValue=function(name, ifNull) {
-		var ret=ifNull;
-		for(var i=0; i<this.attributes.length; i++) {
-			if(this.attributes[i].name==name) ret=this.attributes[i].value;
-		}
-		return ret;
-	};
-	jsElement.hasChildElement=function(name) {
-		var ret=false;
-		for(var i=0; i<this.children.length; i++) {
-			if(this.children[i].name==name) ret=true;
-		}
-		return ret;
-	};
-	jsElement.getChildElements=function(name) {
-		var ret=[];
-		for(var i=0; i<this.children.length; i++) {
-			if(this.children[i].type=="element") {
-				if(this.children[i].name==name) ret.push(this.children[i]);
-			}
-		}
-		return ret;
-	};
-	jsElement.getDescendantElements=function(name) {
-		return this.children.flatMap(c => c.type === 'element' ? (c.name === name ? [c] : []).concat(c.getDescendantElements(name)) : []);
-	};
-	jsElement.getText=function(){
-		var txt="";
-		for(var c of this.children) {
-			if(c.type=="text") txt+=c.value;
-			else if(c.type=="element") txt+=c.getText();
-		}
-		return txt;
-	};
-	jsElement.hasElements=function(){
-		for(var i=0; i<this.children.length; i++) {
-			if(this.children[i].type=="element") return true;
-		}
-		return false;
-	};
-	jsElement.getPrecedingSibling=function(){
-		var parent=this.parent();
-		if(parent){
-			var lastSibling=null;
-			for(var i=0; i<parent.children.length; i++) {
-				var sib = parent.children[i];
-				if(sib.type=="element" && sib.htmlID!=this.htmlID) {
-					lastSibling=sib;
-				} else if(sib.htmlID==this.htmlID){
-					return lastSibling;
-				}
-			}
-		}
-		return null;
-	};
-	jsElement.getFollowingSibling=function(){
-		var parent=this.parent();
-		if(parent){
-			var seenSelf=false;
-			for(var c of parent.children) {
-				if(c.htmlID==this.htmlID){
-					seenSelf=true;
-				} else if(c.type=="element" && seenSelf) {
-					return c;
-				}
-			}
-		}
-		return null;
-	};
-	jsElement.setAttribute=function(name, value){
-		const el = this;
-		if(this.hasAttribute(name)){
-			this.getAttribute(name).value=value;
-		} else {
-			this.attributes.push({
-				type: "attribute",
-				name: name,
-				value: value,
-				htmlID: null,
-				parent: function(){return el;}
-			});
-		}
-	};
-	jsElement.addText=function(txt){
-		const el = this;
-		this.children.push({
-			htmlID: null,
-			type: 'text',
-			value: txt,
-			parent() { return el; }
-		});
-	};
-	return jsElement;
 },
 
 verifyDocSpec() { //make sure the docSpec object has everything it needs
@@ -617,27 +537,20 @@ harvest() { //harvests the contents of an editor
 harvestElement(htmlElement: Element, jsParent?: XonomyElementInstance) {
 	var htmlID=htmlElement.id;
 	if(!Xonomy.harvestCache[htmlID]) {
-		var js: XonomyElementInstance=new Surrogate(jsParent);
-		js.type="element";
-		js.name=htmlElement.getAttribute("data-name");
-		/** @type {XonomyElementDefinition} */
-		var docspecElement=Xonomy.docSpec.elements[js.name];
-		js.elementName=docspecElement ? docspecElement.elementName() : js.name;
-		js.htmlID=htmlElement.id;
-		js.attributes=[];
+		const definitionID = htmlElement.getAttribute('data-name');
+		const def=Xonomy.docSpec.elements[definitionID];
+		var js=new XonomyElementInstance(jsParent, definitionID, def.elementName?def.elementName():definitionID, htmlElement.id);
 		var htmlAttributes=$(htmlElement).find(".tag.opening > .attributes").toArray()[0];
 		for(var i=0; i<htmlAttributes.children.length; i++) {
 			var htmlAttribute=htmlAttributes.children[i];
 			if($(htmlAttribute).hasClass("attribute")) js["attributes"].push(Xonomy.harvestAttribute(htmlAttribute, js));
 		}
-		js.children=[];
 		var htmlChildren=$(htmlElement).children(".children").toArray()[0];
 		for(var i=0; i<htmlChildren.children.length; i++) {
 			var htmlChild=htmlChildren.children[i];
 			if($(htmlChild).hasClass("element")) js["children"].push(Xonomy.harvestElement(htmlChild, js));
 			else if($(htmlChild).hasClass("textnode")) js["children"].push(Xonomy.harvestText(htmlChild, js));
 		}
-		js=Xonomy.enrichElement(js);
 		Xonomy.harvestCache[htmlID]=js;
 	}
 	return Xonomy.harvestCache[htmlID] as XonomyElementInstance;
