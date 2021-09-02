@@ -5,21 +5,6 @@
 // If we don't some code may not compile.
 // See https://github.com/microsoft/TypeScript/issues/12815#issuecomment-266356277
 
-type XonomyAttributeInstance = {
-	type: 'attribute'
-	name: string
-	value: string
-	htmlID: string
-	parent(): XonomyElementInstance
-}
-
-type XonomyTextInstance = {
-	type: 'text'
-	value: string
-	htmlID: string
-	name?: never
-	parent(): XonomyElementInstance
-}
 
 // Xonomy template definitions
 // ======================================
@@ -128,22 +113,16 @@ type XonomyWhat = 'openingTagName'|'closingTagName'|'attributeName'|'attributeVa
 
 // -----------------------------------------
 
-class Surrogate {
-	constructor(
-		public parent: XonomyElementInstance
-	) {}
-}
-
 class XonomyElementInstance {
-	readonly type: "element"
+	readonly type = "element"
 	readonly attributes: XonomyAttributeInstance[] = [];
 	readonly children: Array<XonomyElementInstance|XonomyTextInstance> = [];
 
 	constructor(
-		public readonly internalParent: XonomyElementInstance|undefined,
 		public readonly name: string,
 		public readonly elementName: string,
-		public htmlID = undefined as undefined|string
+		public internalParent?: XonomyElementInstance,
+		public htmlID?: string,
 	) {}
 
 	parent(): XonomyElementInstance { return this.internalParent; }
@@ -166,7 +145,7 @@ class XonomyElementInstance {
 		}
 		return null; // no parent, or we didn't find ourselves in the parent...
 	}
-	getFollowingSibling(): null|XonomyElementInstance|XonomyTextInstance {
+	getFollowingSibling(): null|XonomyElementInstance {
 		if (this.internalParent) {
 			let seenSelf = false;
 			for (const sib of this.internalParent.children) {
@@ -177,25 +156,35 @@ class XonomyElementInstance {
 		return null; // no parent, or we didn't find ourselves in the parent...
 	}
 	setAttribute(name: string, value: string): void {
-		const self = this;
 		if(this.hasAttribute(name)) this.getAttribute(name).value=value;
-		else this.attributes.push({
-			type: "attribute",
-			name: name,
-			value: value,
-			htmlID: null,
-			parent() { return self; }
-		});
+		else this.attributes.push(new XonomyAttributeInstance(name, value, this));
 	}
 	addText(text: string): void {
-		const self = this;
-		this.children.push({
-			htmlID: null,
-			type: 'text',
-			value: text,
-			parent() { return self; }
-		});
+		this.children.push(new XonomyTextInstance(text));
 	}
+}
+
+class XonomyAttributeInstance implements XonomyAttributeInstance {
+	readonly type = "attribute";
+	constructor(
+		public readonly name: string,
+		public value: string,
+		public internalParent: XonomyElementInstance|null = null,
+		public htmlID?: string,
+	) {}
+	
+	parent(): XonomyElementInstance|null { return this.internalParent; }
+}
+
+class XonomyTextInstance implements XonomyTextInstance {
+	readonly type = "text";
+	constructor(
+		public value: string,
+		public internalParent: XonomyElementInstance|null = null,
+		public htmlID?: string,
+	) {}
+
+	parent(): XonomyElementInstance|null { return this.internalParent; }
 }
 
 const Xonomy = {
@@ -274,17 +263,15 @@ xml2js(xml: string|Document|Element, jsParent?: XonomyElementInstance) {
 	if(typeof(xml)=="string") xml=$.parseXML(xml);
 	if('documentElement' in xml) xml=xml.documentElement;
 
-	var js = new XonomyElementInstance(
-		jsParent,
-		Xonomy.docSpec.getElementId(xml.nodeName, jsParent ? jsParent.name : undefined),
-		xml.nodeName,
-	);
+	const elementName = xml.nodeName;
+	const elementID = Xonomy.docSpec.getElementId(xml.nodeName, jsParent ? jsParent.name : undefined);
+	var js = new XonomyElementInstance(elementID,elementName);
 	
 	for(var i=0; i<xml.attributes.length; i++) {
 		var attr=xml.attributes[i];
 		if(!Xonomy.isNamespaceDeclaration(attr.nodeName)) {
 			if(attr.name!="xml:space") {
-				js["attributes"].push({type: "attribute", name: attr.nodeName, value: attr.value, htmlID: "", parent: function(){return js}, });
+				js["attributes"].push(new XonomyAttributeInstance(attr.nodeName, attr.value, js));
 			}
 		} else {
 			Xonomy.namespaces[attr.nodeName]=attr.value;
@@ -296,7 +283,7 @@ xml2js(xml: string|Document|Element, jsParent?: XonomyElementInstance) {
 			js["children"].push(Xonomy.xml2js(child as Element, js));
 		}
 		if(child.nodeType==3) { //text node
-			js["children"].push({type: "text", value: child.nodeValue, htmlID: "", parent: function(){return js}, });
+			js["children"].push(new XonomyTextInstance(child.nodeValue, js));
 		}
 	}
 	return js;
@@ -434,10 +421,10 @@ refresh() {
 	});
 	$(".xonomy .element.hasText > .children > .element").each(function () { //determine whether each child element of hasText element should have empty text nodes on either side
 		if($(this).prev().length == 0 || !$(this).prev().hasClass("textnode")) {
-			$(this).before(Xonomy.renderText({ type: "text", value: "" }));
+			$(this).before(Xonomy.renderText(new XonomyTextInstance("")));
 		}
 		if($(this).next().length == 0 || !$(this).next().hasClass("textnode")) {
-			$(this).after(Xonomy.renderText({ type: "text", value: "" }));
+			$(this).after(Xonomy.renderText(new XonomyTextInstance("")));
 		}
 	});
 	var merged=false; while(!merged) { //merge adjacent text nodes
@@ -524,13 +511,7 @@ harvest() { //harvests the contents of an editor
 	var rootElement=$(".xonomy .element").first().toArray()[0];
 	var js=Xonomy.harvestElement(rootElement);
 	for(var key in Xonomy.namespaces) {
-		if(!js.hasAttribute(key)) js.attributes.push({
-			type: "attribute",
-			name: key,
-			value: Xonomy.namespaces[key],
-			parent: () => js,
-			htmlID: '' // TODO unnecessary 
-		});
+		if(!js.hasAttribute(key)) js.attributes.push(new XonomyAttributeInstance(key, Xonomy.namespaces[key], js));
 	}
 	return Xonomy.js2xml(js);
 },
@@ -539,7 +520,7 @@ harvestElement(htmlElement: Element, jsParent?: XonomyElementInstance) {
 	if(!Xonomy.harvestCache[htmlID]) {
 		const definitionID = htmlElement.getAttribute('data-name');
 		const def=Xonomy.docSpec.elements[definitionID];
-		var js=new XonomyElementInstance(jsParent, definitionID, def.elementName?def.elementName():definitionID, htmlElement.id);
+		var js=new XonomyElementInstance(definitionID, def.elementName?def.elementName():definitionID, jsParent, htmlElement.id);
 		var htmlAttributes=$(htmlElement).find(".tag.opening > .attributes").toArray()[0];
 		for(var i=0; i<htmlAttributes.children.length; i++) {
 			var htmlAttribute=htmlAttributes.children[i];
@@ -558,22 +539,26 @@ harvestElement(htmlElement: Element, jsParent?: XonomyElementInstance) {
 harvestAttribute(htmlAttribute: Element, jsParent?: XonomyElementInstance) {
 	var htmlID=htmlAttribute.id;
 	if(!Xonomy.harvestCache[htmlID]) {
-		var js: XonomyAttributeInstance = new Surrogate(jsParent);
-		js.type = "attribute";
-		js.name = htmlAttribute.getAttribute("data-name");
-		js.htmlID = htmlAttribute.id;
-		js.value = htmlAttribute.getAttribute("data-value");
-		Xonomy.harvestCache[htmlID]=js;
+		Xonomy.harvestCache[htmlID] = new XonomyAttributeInstance(
+			htmlAttribute.getAttribute("data-name"),
+			htmlAttribute.getAttribute("data-value"),
+			jsParent,
+			htmlAttribute.id
+		);
 	}
 	return Xonomy.harvestCache[htmlID] as XonomyAttributeInstance;
 },
 
 harvestText(htmlText: Element, jsParent?: XonomyElementInstance) {
-	var js: XonomyTextInstance = new Surrogate(jsParent);
-	js.type = "text";
-	js.htmlID = htmlText.id;
-	js.value = htmlText.getAttribute("data-value");
-	return js;
+	var htmlID=htmlText.id;
+	if(!Xonomy.harvestCache[htmlID]) {
+		Xonomy.harvestCache[htmlID] = new XonomyTextInstance(
+			htmlText.getAttribute("data-value"),
+			jsParent,
+			htmlText.id
+		);
+	}
+	return Xonomy.harvestCache[htmlID] as XonomyTextInstance;
 },
 /** Return the parent element harvest. The js argument is put in the element's attributes/children array instead of whatever is harvested there. */
 harvestParentOf(js: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance): null|XonomyElementInstance {
@@ -703,19 +688,19 @@ renderElement(element: XonomyElementInstance) {
 			} else {
 				var prevChildType="";
 				if(hasText && (element.children.length==0 || element.children[0].type=="element")) {
-					html+=Xonomy.renderText({type: "text", value: ""}); //if inline layout, insert empty text node between two elements
+					html+=Xonomy.renderText(new XonomyTextInstance("")); //if inline layout, insert empty text node between two elements
 				}
 				for(var i=0; i<element.children.length; i++) {
 					var child=element.children[i];
 					if(hasText && prevChildType=="element" && child.type=="element") {
-						html+=Xonomy.renderText({type: "text", value: ""}); //if inline layout, insert empty text node between two elements
+						html+=Xonomy.renderText(new XonomyTextInstance("")); //if inline layout, insert empty text node between two elements
 					}
 					if(child.type=="text") html+=Xonomy.renderText(child); //text node
 					else if(child.type=="element") html+=Xonomy.renderElement(child); //element node
 					prevChildType=child.type;
 				}
 				if(hasText && element.children.length>1 && element.children[element.children.length-1].type=="element") {
-					html+=Xonomy.renderText({type: "text", value: ""}); //if inline layout, insert empty text node between two elements
+					html+=Xonomy.renderText(new XonomyTextInstance("")); //if inline layout, insert empty text node between two elements
 				}
 			}
 		html+='</div>';
@@ -778,7 +763,7 @@ renderAttribute(attribute: XonomyAttributeInstance, optionalParentName?: string)
 	attribute.htmlID = htmlID;
 	return html;
 },
-renderText<T extends {value: string}>(text: T) {
+renderText(text: XonomyTextInstance) {
 	var htmlID=Xonomy.nextID();
 	var classNames="textnode focusable";
 	if($.trim(text.value)=="") classNames+=" whitespace";
@@ -835,9 +820,9 @@ wrap(htmlID: string, param: {template: string, placeholder: string}) {
 		var txtClose=jsOld.value.substring(Xonomy.textTillIndex+1);
 		xml=xml.replace(ph, Xonomy.xmlEscape(txtMiddle));
 		var html="";
-		html+=Xonomy.renderText({type: "text", value: txtOpen});
+		html+=Xonomy.renderText(new XonomyTextInstance(txtOpen));
 		var js=Xonomy.xml2js(xml, jsElement); html+=Xonomy.renderElement(js); var newID=js.htmlID;
-		html+=Xonomy.renderText({type: "text", value: txtClose});
+		html+=Xonomy.renderText(new XonomyTextInstance(txtClose));
 		$("#"+Xonomy.textFromID).replaceWith(html);
 		window.setTimeout(function(){ Xonomy.setFocus(newID, "openingTagName"); }, 100);
 	} else { //ab<...>cd --> a<XYZ>b<...>c</XYZ>d
@@ -856,9 +841,9 @@ wrap(htmlID: string, param: {template: string, placeholder: string}) {
 		$("#"+Xonomy.textFromID).nextUntil("#"+Xonomy.textTillID).remove();
 		$("#"+Xonomy.textTillID).remove();
 		var html="";
-		html+=Xonomy.renderText({type: "text", value: txtOpen});
+		html+=Xonomy.renderText(new XonomyTextInstance(txtOpen));
 		var js=Xonomy.xml2js(xml, jsElement); html+=Xonomy.renderElement(js); var newID=js.htmlID;
-		html+=Xonomy.renderText({type: "text", value: txtClose});
+		html+=Xonomy.renderText(new XonomyTextInstance(txtClose));
 		$("#"+Xonomy.textFromID).replaceWith(html);
 		window.setTimeout(function(){ Xonomy.setFocus(newID, "openingTagName"); }, 100);
 	}
@@ -959,7 +944,7 @@ click(htmlID: string, what: XonomyWhat) {
 				Xonomy.showBubble($("#"+htmlID+" > .valueContainer > .value")); //anchor bubble to value
 				Xonomy.answer=function(val: string) {
 					var obj=document.getElementById(htmlID);
-					var html=Xonomy.renderAttribute({type: "attribute", name: name, value: val}, elName);
+					var html=Xonomy.renderAttribute(new XonomyAttributeInstance(name, val), elName);
 					$(obj).replaceWith(html);
 					Xonomy.changed();
 					window.setTimeout(function(){Xonomy.clickoff(); Xonomy.setFocus($(html).prop("id"), what)}, 100);
@@ -981,10 +966,9 @@ click(htmlID: string, what: XonomyWhat) {
 				Xonomy.showBubble($("#"+htmlID+" > .value")); //anchor bubble to value
 				Xonomy.answer=function(val: string) {
 					var obj=document.getElementById(htmlID);
-					var jsText = {type: "text", value: val};
+					var jsText = new XonomyTextInstance(val);
 					var html=Xonomy.renderText(jsText);
 					$(obj).replaceWith(html);
-					// @ts-ignore jsText.htmlId added by Xonomy.renderText (needs to be added to documentation)
 					Xonomy.changed(Xonomy.harvestText(document.getElementById(jsText.htmlID)));
 					window.setTimeout(function(){Xonomy.clickoff(); Xonomy.setFocus($(html).prop("id"), what)}, 100);
 				};
@@ -1331,7 +1315,7 @@ deleteElement(htmlID: string, parameter: any) {
 newAttribute(htmlID: string, parameter: {name: string, value: string}) {
 	Xonomy.clickoff();
 	var $element=$("#"+htmlID);
-	var html=Xonomy.renderAttribute({type: "attribute", name: parameter.name, value: parameter.value}, $element.data("name"));
+	var html=Xonomy.renderAttribute(new XonomyAttributeInstance(parameter.name, parameter.value), $element.data("name"));
 	$("#"+htmlID+" > .tag.opening > .attributes").append(html);
 	Xonomy.changed();
 	//if the attribute we have just added is shy, force rollout:
@@ -1545,7 +1529,7 @@ mergeElements(elDead: XonomyElementInstance, elLive: XonomyElementInstance){
 		if(specDead.hasText(elDead) || specLive.hasText(elLive)){ //if either element is meant to have text, concatenate their children
 			if(elLive.getText()!="" && elDead.getText()!="") {
 				elLive.addText(" ");
-				$("#"+elLive.htmlID).find(".children").first().append(Xonomy.renderText({type: "text", value: " "}));
+				$("#"+elLive.htmlID).find(".children").first().append(Xonomy.renderText(new XonomyTextInstance(" ")));
 			}
 			for(var i=0; i<elDead.children.length; i++) {
 				elLive.children.push(elDead.children[i]);
