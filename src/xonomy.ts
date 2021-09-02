@@ -24,7 +24,11 @@ type XonomyMenuAction = {
 	menu?: XonomyMenuAction[]
 	/**  whether sub-menu is expanded */ 
 	expanded(instance: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance): boolean
+	[isAlreadyValidated]?: boolean
 }
+
+function makeSureDefaultsHaveAllProperties<T>(a: Required<T>) { return a; }
+const isAlreadyValidated = Symbol("We add this to docspec and related definitions to mark they've been verified to be valid.");
 
 type XonomyElementDefinition = {
 	displayName?: (instance: XonomyElementInstance) => string
@@ -37,14 +41,14 @@ type XonomyElementDefinition = {
 	/**  list of other element names */ 
 	canDropTo: string[];
 	elementName(): string
-	displayValue(instance: XonomyElementInstance): string
+	displayValue?(instance: XonomyElementInstance): string
 	backgroundColour(instance: XonomyElementInstance): string
 	/** allow dropping to another parent? */ 
 	localDropOnly(instance: XonomyElementInstance): boolean
 	/** if there is a sibling whose name is listed, then it must be this element's preceding sibling */ 
-	mustBeAfter(instance: XonomyElementInstance): string[]
+	mustBeAfter?(instance: XonomyElementInstance): string[]
 	/** if there is a sibling whose name is listed, then this element must be its preceding sibling */ 
-	mustBeBefore(instance: XonomyElementInstance): string[]
+	mustBeBefore?(instance: XonomyElementInstance): string[]
 	/**  whether to use a more compact display for this element, only affects display */ 
 	oneliner(instance: XonomyElementInstance): boolean
 	/**  whether this element's contents are primarily text (perhaps with some inline markup elements) or whether it's just xml nodes, only affects display */ 
@@ -54,15 +58,16 @@ type XonomyElementDefinition = {
 	/**  initial state, ignored if collapsible is false */ 
 	collapsed(instance: XonomyElementInstance): boolean
 	/**  placeholder string for when the element is collapsed */ 
-	collapsoid(instance: XonomyElementInstance): string
+	collapsoid?(instance: XonomyElementInstance): string
 	isReadOnly(instance: XonomyElementInstance): boolean
 	
 	/**  whether to hide this (and all descendants!) in the interface */ 
 	isInvisible(instance: XonomyElementInstance): boolean
 
 	/** return html-as-string to render a popup the user can use to input a value */
-	asker: (currentValue: string, askerParameter: any, instance: XonomyElementInstance) => string
+	asker(currentValue: string, askerParameter: any, instance: XonomyElementInstance): string
 	askerParameter: any;
+	[isAlreadyValidated]?: boolean;
 }
 
 type XonomyAttributeDefinition = {
@@ -81,6 +86,8 @@ type XonomyAttributeDefinition = {
 	askerParameter: any
 	/** I guess? */
 	menu: XonomyMenuAction[]
+
+	[isAlreadyValidated]?: boolean;
 }
 
 type XonomyDocSpecOnChange = () => void;
@@ -101,6 +108,8 @@ type XonomyDocSpec = {
 	laybyMessage: string
 	/**  Given an element name, and its position in the document, resolve which definition in the DocSpec matches the element. */ 
 	getElementId(xmlElementName: string, parentDefinitionId?: string): string
+
+	[isAlreadyValidated]?: boolean;
 }
 
 type XonomyPickListOption = string|{
@@ -320,14 +329,6 @@ js2xml(js: XonomyElementInstance|XonomyTextInstance|XonomyAttributeInstance) {
 	}
 },
 
-verifyDocSpec() { //make sure the docSpec object has everything it needs
-	if(!Xonomy.docSpec || typeof(Xonomy.docSpec)!="object") Xonomy.docSpec={};
-	if(!Xonomy.docSpec.elements || typeof(Xonomy.docSpec.elements)!="object") Xonomy.docSpec.elements={};
-	if(!Xonomy.docSpec.onchange || typeof(Xonomy.docSpec.onchange)!="function") Xonomy.docSpec.onchange=function(){};
-	if(!Xonomy.docSpec.validate || typeof(Xonomy.docSpec.validate)!="function") Xonomy.docSpec.validate=function(){};
-	if(!Xonomy.docSpec.getElementId || typeof(Xonomy.docSpec.getElementId)!="function") Xonomy.docSpec.getElementId=function(elementName: string, parentDefinitionId: string) { return elementName; }
-},
-
 asFunction<T, I extends XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance|undefined>(specProperty: T|undefined|((inst?: I) => T), defaultValue: T): (inst?: I) => T {
 	if(specProperty instanceof Function)
 		return specProperty;
@@ -336,62 +337,110 @@ asFunction<T, I extends XonomyElementInstance|XonomyAttributeInstance|XonomyText
 	else
 		return function() { return defaultValue };
 },
+
+verifyDocSpec() { //make sure the docSpec object has everything it needs
+	if(!$.isPlainObject(Xonomy.docSpec)) Xonomy.docSpec={} as XonomyDocSpec;
+	const spec = Xonomy.docSpec as Partial<XonomyDocSpec>;
+	if (spec[isAlreadyValidated]) return;
+	Object.assign(spec, makeSureDefaultsHaveAllProperties<XonomyDocSpec>({
+		allowLayby: typeof spec.allowLayby === 'boolean' ? spec.allowLayby : false,
+		allowModeSwitching: typeof spec.allowModeSwitching === 'boolean' ? spec.allowModeSwitching : false,
+		elements: $.isPlainObject(spec.elements) ? spec.elements : {},
+		getElementId: spec.getElementId instanceof Function ? spec.getElementId : function(elementName: string, parentID: string) { return elementName; },
+		laybyMessage: typeof spec.laybyMessage === 'string' ? spec.laybyMessage : '',
+		onModeSwitch: spec.onModeSwitch instanceof Function ? spec.onModeSwitch : function() {},
+		onchange: spec.onchange instanceof Function ? spec.onchange : function() {},
+		unknownAttribute: spec.unknownAttribute instanceof Function || $.isPlainObject ? spec.unknownAttribute : undefined,
+		unknownElement: spec.unknownElement instanceof Function || $.isPlainObject ? spec.unknownElement : undefined,
+		validate: spec.validate instanceof Function ? spec.validate : function() {},
+		[isAlreadyValidated]: true
+	}));
+},
+
 verifyDocSpecElement(name: string) { //make sure the DocSpec object has such an element, that the element has everything it needs
-	if(!Xonomy.docSpec.elements[name] || typeof(Xonomy.docSpec.elements[name])!="object") {
-		if(Xonomy.docSpec.unknownElement) {
-			Xonomy.docSpec.elements[name]=(typeof(Xonomy.docSpec.unknownElement)==="function")
-				? Xonomy.docSpec.unknownElement(name)
-				: Xonomy.docSpec.unknownElement;
-		}
-		else Xonomy.docSpec.elements[name]={};
+	if(!$.isPlainObject(Xonomy.docSpec.elements[name])) {
+		const unknownElement = Xonomy.docSpec.unknownElement;
+		Xonomy.docSpec.elements[name] = 
+			unknownElement instanceof Function ? unknownElement(name) : 
+			$.isPlainObject(unknownElement) ? Object.assign({}, unknownElement) :
+			{} as XonomyElementDefinition;
 	}
-	var spec: XonomyElementDefinition=Xonomy.docSpec.elements[name];
-	if(!spec.attributes || typeof(spec.attributes)!="object") spec.attributes={};
-	if(!spec.menu || typeof(spec.menu)!="object") spec.menu=[];
-	if(!spec.inlineMenu || typeof(spec.inlineMenu)!="object") spec.inlineMenu=[];
-	if(!spec.canDropTo || typeof(spec.canDropTo)!="object") spec.canDropTo=[];
-	//if(!spec.mustBeAfter || typeof(spec.mustBeAfter)!="object") spec.mustBeAfter=[];
-	//if(!spec.mustBeBefore || typeof(spec.mustBeBefore)!="object") spec.mustBeBefore=[];
-	spec.mustBeAfter=Xonomy.asFunction(spec.mustBeAfter, []);
-	spec.mustBeBefore=Xonomy.asFunction(spec.mustBeBefore, []);
-	spec.oneliner=Xonomy.asFunction(spec.oneliner, false);
-	spec.hasText=Xonomy.asFunction(spec.hasText, false);
-	spec.collapsible=Xonomy.asFunction(spec.collapsible, true);
-	spec.collapsed=Xonomy.asFunction(spec.collapsed, false);
-	spec.localDropOnly=Xonomy.asFunction(spec.localDropOnly, false);
-	spec.isReadOnly=Xonomy.asFunction(spec.isReadOnly, false);
-	spec.isInvisible=Xonomy.asFunction(spec.isInvisible, false);
-	spec.backgroundColour=Xonomy.asFunction(spec.backgroundColour, "");
-	spec.elementName=Xonomy.asFunction(spec.elementName, name);
-	if(spec.displayName) spec.displayName=Xonomy.asFunction(spec.displayName, "");
-	if(spec.title) spec.title=Xonomy.asFunction(spec.title, "");
-	if(spec.caption) spec.caption=Xonomy.asFunction(spec.caption, "");
+	const spec = Xonomy.docSpec.elements[name] as Partial<XonomyElementDefinition>;
+	if (spec[isAlreadyValidated]) return;
+	Object.assign(spec, makeSureDefaultsHaveAllProperties<XonomyElementDefinition>({
+		asker: spec.asker instanceof Function ? spec.asker : Xonomy.askLongString,
+		askerParameter: spec.askerParameter,
+		attributes: $.isPlainObject(spec.attributes) ? spec.attributes : {},
+		backgroundColour: Xonomy.asFunction(spec.backgroundColour, ''),
+		canDropTo: Array.isArray(spec.canDropTo) ? spec.canDropTo : [],
+		caption: 'caption' in spec ? Xonomy.asFunction(spec.caption, '') : undefined,
+		collapsed: Xonomy.asFunction(spec.collapsed, false),
+		collapsible: Xonomy.asFunction(spec.collapsible, true),
+		collapsoid: 'collapsoid' in spec ? Xonomy.asFunction(spec.collapsoid, '') : undefined,
+		displayName: 'displayName' in spec ? Xonomy.asFunction(spec.displayName, name) : undefined,
+		displayValue: 'displayValue' in spec ? Xonomy.asFunction(spec.displayValue, '') : undefined,
+		elementName: Xonomy.asFunction(spec.elementName, name),
+		hasText: Xonomy.asFunction(spec.hasText, false),
+		inlineMenu: Array.isArray(spec.inlineMenu) ? spec.inlineMenu : [],
+		isInvisible: 'isInvisible' in spec ? Xonomy.asFunction(spec.isInvisible, false) : undefined,
+		isReadOnly: 'isReadOnly' in spec ? Xonomy.asFunction(spec.isReadOnly, false) : undefined,
+		localDropOnly: Xonomy.asFunction(spec.localDropOnly, false),
+		menu: Array.isArray(spec.menu) ? spec.menu : [],
+		mustBeAfter: 'mustBeAfter' in spec ? Xonomy.asFunction(spec.mustBeAfter, []) : undefined,
+		mustBeBefore: 'mustBeBefore' in spec ? Xonomy.asFunction(spec.mustBeBefore, []) : undefined,
+		oneliner: Xonomy.asFunction(spec.oneliner, false),
+		title: 'title' in spec ? Xonomy.asFunction(spec.title, '') : undefined,
+		[isAlreadyValidated]: true
+	}));
 	
 	for(var i=0; i<spec.menu.length; i++) Xonomy.verifyDocSpecMenuItem(spec.menu[i]);
 	for(var i=0; i<spec.inlineMenu.length; i++) Xonomy.verifyDocSpecMenuItem(spec.inlineMenu[i]);
 	for(var attributeName in spec.attributes) Xonomy.verifyDocSpecAttribute(name, attributeName);
 },
 verifyDocSpecAttribute(elementName: string, attributeName: string) { //make sure the DocSpec object has such an attribute, that the attribute has everything it needs
-	var elSpec=Xonomy.docSpec.elements[elementName];
-	if(!elSpec.attributes[attributeName] || typeof(elSpec.attributes[attributeName])!="object") {
-		if(Xonomy.docSpec.unknownAttribute) {
-			elSpec.attributes[attributeName]=(typeof(Xonomy.docSpec.unknownAttribute)==="function")
-				? Xonomy.docSpec.unknownAttribute(elementName, attributeName)
-				: Xonomy.docSpec.unknownAttribute;
-		}
-		else elSpec.attributes[attributeName]={};
+	Xonomy.verifyDocSpecElement(elementName);
+	const elSpec = Xonomy.docSpec.elements[elementName];
+	if(!$.isPlainObject(elSpec.attributes[attributeName])) {
+		const unknownAttribute = Xonomy.docSpec.unknownAttribute;
+		elSpec.attributes[attributeName] = 
+			unknownAttribute instanceof Function ? unknownAttribute(elementName, attributeName) : 
+			$.isPlainObject(unknownAttribute) ? Object.assign({}, unknownAttribute) :
+			{} as XonomyAttributeDefinition;
 	}
-	var spec=elSpec.attributes[attributeName];
-	if(!(spec.asker instanceof Function)) spec.asker=function(){return ""};
-	if(!spec.menu || typeof(spec.menu)!="object") spec.menu=[];
-	spec.isReadOnly=Xonomy.asFunction(spec.isReadOnly, false);
-	spec.isInvisible=Xonomy.asFunction(spec.isInvisible, false);
-	spec.shy=Xonomy.asFunction(spec.shy, false);
-	if(spec.displayName) spec.displayName=Xonomy.asFunction(spec.displayName, "");
-	if(spec.title) spec.title=Xonomy.asFunction(spec.title, "");
+	const spec = elSpec.attributes[attributeName] as Partial<XonomyAttributeDefinition>;
+	if (spec[isAlreadyValidated]) return;
+	Object.assign(spec, makeSureDefaultsHaveAllProperties<XonomyAttributeDefinition>({
+		asker: spec.asker instanceof Function ? spec.asker : Xonomy.askString,
+		askerParameter: spec.askerParameter,
+		caption: 'caption' in spec ? Xonomy.asFunction(spec.caption, '') : undefined,
+		displayName: 'displayName' in spec ? Xonomy.asFunction(spec.displayName, attributeName) : undefined,
+		displayValue: 'displayValue' in spec ? Xonomy.asFunction(spec.displayValue, '') : undefined,
+		title: 'title' in spec ? Xonomy.asFunction(spec.title, '') : undefined,
+		isInvisible: 'isInvisible' in spec ? Xonomy.asFunction(spec.isInvisible, false) : undefined,
+		isReadOnly: 'isReadOnly' in spec ? Xonomy.asFunction(spec.isReadOnly, false) : undefined,
+		menu: Array.isArray(spec.menu) ? spec.menu : [],
+		shy: 'shy' in spec ? Xonomy.asFunction(spec.shy, false) : undefined,
+		[isAlreadyValidated]: true
+	}));
+
 	for(var i=0; i<spec.menu.length; i++) Xonomy.verifyDocSpecMenuItem(spec.menu[i]);
 },
 verifyDocSpecMenuItem(menuItem: XonomyMenuAction) { //make sure the menu item has all it needs
+	if (menuItem[isAlreadyValidated]) return;
+	Object.assign(menuItem, makeSureDefaultsHaveAllProperties<XonomyMenuAction>({
+		action: menuItem.action instanceof Function ? menuItem.action : function(){},
+		actionParameter: menuItem.actionParameter,
+		caption: Xonomy.asFunction(menuItem.caption, '?'),
+		expanded: Xonomy.asFunction(menuItem.expanded, false),
+		hideIf: Xonomy.asFunction(menuItem.hideIf, false),
+		icon: typeof menuItem.icon === 'string' ? menuItem.icon : undefined,
+		keyCaption: typeof menuItem.keyCaption === 'string' ? menuItem.keyCaption : undefined,
+		keyTrigger: menuItem.keyTrigger instanceof Function ? menuItem.keyTrigger : undefined,
+		menu: Array.isArray(menuItem.menu) ? menuItem.menu : undefined,
+		[isAlreadyValidated]: true
+	}))
+	
+	
 	menuItem.caption=Xonomy.asFunction(menuItem.caption, "?");
 	if(!menuItem.action || typeof(menuItem.action)!="function") menuItem.action=function(){};
 	if(!menuItem.hideIf) menuItem.hideIf=function(){return false;};
@@ -956,11 +1005,9 @@ click(htmlID: string, what: XonomyWhat) {
 			var value=$("#"+htmlID).attr("data-value"); //obtain current value
 			var elName=$("#"+htmlID).closest(".element").attr("data-name");
 			const spec=Xonomy.docSpec.elements[elName];
-			if (typeof(spec.asker) != "function") {
-				var content: string=Xonomy.askLongString(value, null, Xonomy.harvestElement($("#"+htmlID).closest(".element").toArray()[0])); //compose bubble content
-			} else {
-				var content: string=spec.asker(value, spec.askerParameter, Xonomy.harvestElement($("#"+htmlID).closest(".element").toArray()[0])); //use specified asker
-			}
+			const jsEl = Xonomy.harvestElement(document.getElementById(htmlID));
+			spec.asker(value, spec.askerParameter, jsEl);
+			
 			if(content!="" && content!="<div class='menu'></div>") {
 				document.body.appendChild(Xonomy.makeBubble(content)); //create bubble
 				Xonomy.showBubble($("#"+htmlID+" > .value")); //anchor bubble to value
