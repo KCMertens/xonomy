@@ -1,4 +1,5 @@
 const path = require('path');
+// const {CleanWebpackPlugin} = require('clean-webpack-plugin');
 
 module.exports = {
 	entry: {
@@ -19,7 +20,7 @@ module.exports = {
 		// Path in webpack-dev-server for compiled files (has priority over disk files in case both exist)
 		publicPath: '/dist/',
 		clean: true, // clean previous outputs prior to compiling
-		library: ['Xomomy']
+		library: ['Xonomy']
 	},
 	resolve: {
 		extensions: ['.js', '.ts'], // enable autocompleting .ts and .js extensions when using import '...'
@@ -28,5 +29,5 @@ module.exports = {
 			// Note: this also requires typescript to be able to find the imports (though it doesn't use them other than for type checking), see tsconfig.json
 			"@": path.join(__dirname, "src"),
 		}
-	}
+	},
 };

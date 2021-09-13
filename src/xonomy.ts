@@ -11,7 +11,7 @@
 function makeSureDefaultsHaveAllProperties<T>(a: Required<T>) { return a; }
 const isAlreadyValidated = Symbol("We add this to docspec and related definitions to mark they've been verified to be valid.");
 
-type XonomyMenuAction = {
+export type XonomyMenuAction = {
 	caption(instance: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance): string
 	action(htmlID: string, actionParameter: any): void
 	actionParameter: any
@@ -29,7 +29,7 @@ type XonomyMenuAction = {
 	[isAlreadyValidated]?: boolean
 }
 
-type XonomyElementDefinition = {
+export type XonomyElementDefinition = {
 	displayName?: (instance: XonomyElementInstance) => string
 	title?: (instance: XonomyElementInstance) => string
 	caption?: (instance: XonomyElementInstance) => string
@@ -69,7 +69,7 @@ type XonomyElementDefinition = {
 	[isAlreadyValidated]?: boolean;
 }
 
-type XonomyAttributeDefinition = {
+export type XonomyAttributeDefinition = {
 	displayName?: (instance: XonomyAttributeInstance) => string
 	displayValue?: (instance: XonomyAttributeInstance) => string
 	title?: (instance: XonomyAttributeInstance) => string
@@ -89,9 +89,7 @@ type XonomyAttributeDefinition = {
 	[isAlreadyValidated]?: boolean;
 }
 
-type XonomyDocSpecOnChange = () => void;
-
-type XonomyDocSpec = {
+export type XonomyDocSpec = {
 	elements: Record<string, XonomyElementDefinition>
 	unknownElement?: XonomyElementDefinition|((elementID: string) => XonomyElementDefinition)
 	unknownAttribute?: XonomyAttributeDefinition|((elementID: string, attributeName: string) => XonomyAttributeDefinition)
@@ -111,17 +109,17 @@ type XonomyDocSpec = {
 	[isAlreadyValidated]?: boolean;
 }
 
-type XonomyPickListOption = string|{
+export type XonomyPickListOption = string|{
 	caption: string,
 	value: string,
 	displayValue?: string
 }
-type XonomyWhat = 'openingTagName'|'closingTagName'|'attributeName'|'attributeValue'|'text'|'rollouter'|'warner'|'childrenCollapsed';
+export type XonomyWhat = 'openingTagName'|'closingTagName'|'attributeName'|'attributeValue'|'text'|'rollouter'|'warner'|'childrenCollapsed';
 
 
 // -----------------------------------------
 
-class XonomyElementInstance {
+export class XonomyElementInstance {
 	readonly type = "element"
 	readonly attributes: XonomyAttributeInstance[] = [];
 	readonly children: Array<XonomyElementInstance|XonomyTextInstance> = [];
@@ -176,7 +174,7 @@ class XonomyElementInstance {
 	}
 }
 
-class XonomyAttributeInstance implements XonomyAttributeInstance {
+export class XonomyAttributeInstance implements XonomyAttributeInstance {
 	readonly type = "attribute";
 	constructor(
 		public readonly name: string,
@@ -188,7 +186,7 @@ class XonomyAttributeInstance implements XonomyAttributeInstance {
 	parent(): XonomyElementInstance|null { return this.internalParent; }
 }
 
-class XonomyTextInstance implements XonomyTextInstance {
+export class XonomyTextInstance implements XonomyTextInstance {
 	readonly type = "text";
 	constructor(
 		public value: string,
@@ -2045,3 +2043,5 @@ goLeft(){
 	if($next.hasClass("rollouter")) Xonomy.setFocus($next.closest(".element").prop("id"), "rollouter");
 },
 }
+
+export default Xonomy;

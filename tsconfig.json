@@ -1,17 +1,13 @@
 {
 	"compilerOptions": {
 		"outDir": "./dist/",
-		"module": "esnext",
+		"module": "ES6",
 		"target": "es6",
 		"allowJs": true,
 		"moduleResolution": "node",
 		"sourceMap": true,
 		
 		"strict": true,
-		// "noImplicitAny": false,
-		// "strictNullChecks": false,
-		
-		"resolveJsonModule": true,
 		
 		"lib": [
 			"ES2020",
