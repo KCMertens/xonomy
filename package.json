@@ -1,6 +1,6 @@
 {
   "name": "@kcmertens/xonomy",
-  "version": "0.0.5",
+  "version": "0.0.7",
   "description": "An experimental typescript implementation of the Xonomy XML editor",
   "main": "./dist/xonomy.js",
   "types": "./dist/src/xonomy.d.ts",
@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/michmech/xonomy.git"
+    "url": "git+https://github.com/kcmertens/xonomy.git"
   },
   "keywords": [
     "xonomy",
@@ -27,9 +27,9 @@
   "author": "KCMertens",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/michmech/xonomy/issues"
+    "url": "https://github.com/kcmertens/xonomy/issues"
   },
-  "homepage": "https://github.com/michmech/xonomy#readme",
+  "homepage": "https://github.com/kcmertens/xonomy#readme",
   "devDependencies": {
     "@babel/core": "^7.15.0",
     "@babel/preset-env": "^7.15.0",
