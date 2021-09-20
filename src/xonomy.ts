@@ -29,6 +29,20 @@ export type XonomyMenuAction = {
 	[isAlreadyValidated]?: boolean
 }
 
+export type XonomyMenuActionExternal = {
+	caption?: XonomyMenuAction['caption']|ReturnType<Required<XonomyMenuAction>['caption']>;
+	hideIf?: XonomyMenuAction['hideIf']|ReturnType<Required<XonomyMenuAction>['hideIf']>;
+	expanded?: XonomyMenuAction['expanded']|ReturnType<Required<XonomyMenuAction>['expanded']>;
+
+	action?: XonomyMenuAction['action'];
+	actionParameter?: any;
+
+	keyCaption?: string;
+	keyTrigger?: XonomyMenuAction['keyTrigger']
+
+	menu?: XonomyMenuActionExternal[];
+}
+
 export type XonomyElementDefinition = {
 	displayName?: (instance: XonomyElementInstance) => string
 	title?: (instance: XonomyElementInstance) => string
@@ -39,6 +53,7 @@ export type XonomyElementDefinition = {
 	inlineMenu: XonomyMenuAction[] 
 	/**  list of other element names */ 
 	canDropTo: string[];
+
 	elementName(): string
 	displayValue?(instance: XonomyElementInstance): string
 	backgroundColour(instance: XonomyElementInstance): string
@@ -69,6 +84,36 @@ export type XonomyElementDefinition = {
 	[isAlreadyValidated]?: boolean;
 }
 
+export type XonomyElementDefinitionExternal = {
+	displayName?: XonomyElementDefinition['caption']|ReturnType<Required<XonomyElementDefinition>['caption']>;
+	title?: XonomyElementDefinition['caption']|ReturnType<Required<XonomyElementDefinition>['caption']>;
+	caption?: XonomyElementDefinition['caption']|ReturnType<Required<XonomyElementDefinition>['caption']>;
+
+	elementName?: XonomyElementDefinition['elementName']|ReturnType<Required<XonomyElementDefinition>['elementName']>;
+	displayValue?: XonomyElementDefinition['displayValue']|ReturnType<Required<XonomyElementDefinition>['displayValue']>;
+	backgroundColour?: XonomyElementDefinition['backgroundColour']|ReturnType<XonomyElementDefinition['backgroundColour']>;
+	localDropOnly?: XonomyElementDefinition['localDropOnly']|ReturnType<XonomyElementDefinition['localDropOnly']>;
+	mustBeAfter?: XonomyElementDefinition['mustBeAfter']|ReturnType<Required<XonomyElementDefinition>['mustBeAfter']>;
+	mustBeBefore?: XonomyElementDefinition['mustBeBefore']|ReturnType<Required<XonomyElementDefinition>['mustBeBefore']>;
+	oneliner?: XonomyElementDefinition['oneliner']|ReturnType<XonomyElementDefinition['oneliner']>;
+	hasText?: XonomyElementDefinition['hasText']|ReturnType<XonomyElementDefinition['hasText']>;
+	collapsible?: XonomyElementDefinition['collapsible']|ReturnType<XonomyElementDefinition['collapsible']>;
+	collapsed?: XonomyElementDefinition['collapsed']|ReturnType<XonomyElementDefinition['collapsed']>;
+	collapsoid?: XonomyElementDefinition['collapsoid']|ReturnType<Required<XonomyElementDefinition>['collapsoid']>;
+	isReadOnly?: XonomyElementDefinition['isReadOnly']|ReturnType<XonomyElementDefinition['isReadOnly']>;
+	isInvisible?: XonomyElementDefinition['isInvisible']|ReturnType<XonomyElementDefinition['isInvisible']>;
+	
+	asker?: XonomyElementDefinition['asker'];
+	askerParameter?: any;
+
+
+	attributes?: { [attributeName: string]: XonomyAttributeDefinitionExternal };
+	menu?: XonomyMenuActionExternal[];
+	inlineMenu?: XonomyMenuActionExternal[];
+	canDropTo?: string[];	
+}
+
+
 export type XonomyAttributeDefinition = {
 	displayName?: (instance: XonomyAttributeInstance) => string
 	displayValue?: (instance: XonomyAttributeInstance) => string
@@ -82,11 +127,25 @@ export type XonomyAttributeDefinition = {
 
 	/** return html-as-string to render a popup the user can use to input a value */
 	asker: (currentValue: string, askerParameter: any, instance: XonomyAttributeInstance) => string
-	askerParameter: any
+	askerParameter?: any
 	/** I guess? */
 	menu: XonomyMenuAction[]
 
 	[isAlreadyValidated]?: boolean;
+}
+
+export type XonomyAttributeDefinitionExternal = {
+	displayName?: XonomyAttributeDefinition['displayName']|ReturnType<Required<XonomyAttributeDefinition>['displayName']>;
+	displayValue?: XonomyAttributeDefinition['displayValue']|ReturnType<Required<XonomyAttributeDefinition>['displayValue']>;
+	title?: XonomyAttributeDefinition['title']|ReturnType<Required<XonomyAttributeDefinition>['title']>;
+	caption?: XonomyAttributeDefinition['caption']|ReturnType<Required<XonomyAttributeDefinition>['caption']>;
+	isReadOnly?: XonomyAttributeDefinition['isReadOnly']|ReturnType<Required<XonomyAttributeDefinition>['isReadOnly']>;
+	isInvisible?: XonomyAttributeDefinition['isInvisible']|ReturnType<Required<XonomyAttributeDefinition>['isInvisible']>;
+	shy?: XonomyAttributeDefinition['shy']|ReturnType<Required<XonomyAttributeDefinition>['shy']>;
+
+	asker?: XonomyAttributeDefinition['asker'];
+	askerParameter?: any;
+	menu?: XonomyMenuActionExternal[];
 }
 
 export type XonomyDocSpec = {
@@ -109,13 +168,28 @@ export type XonomyDocSpec = {
 	[isAlreadyValidated]?: boolean;
 }
 
+
+export type XonomyDocSpecExternal = {
+	elements?: Record<string, XonomyElementDefinitionExternal>;
+	unknownElement?: XonomyElementDefinitionExternal;
+	unknownAttribute?: XonomyAttributeDefinitionExternal;
+	onchange?: XonomyDocSpec['onchange'];
+	validate?: XonomyDocSpec['validate'];
+	allowModeSwitching?: boolean;
+	onModeSwitch?: XonomyDocSpec['onModeSwitch'];
+	allowLayby?: boolean;
+	laybyMessage?: string;
+	getElementId?: XonomyDocSpec['getElementId'];
+}
+
+
+
 export type XonomyPickListOption = string|{
 	caption: string,
 	value: string,
 	displayValue?: string
 }
 export type XonomyWhat = 'openingTagName'|'closingTagName'|'attributeName'|'attributeValue'|'text'|'rollouter'|'warner'|'childrenCollapsed';
-
 
 // -----------------------------------------
 
