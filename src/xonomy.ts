@@ -5,6 +5,7 @@
 // If we don't some code may not compile.
 // See https://github.com/microsoft/TypeScript/issues/12815#issuecomment-266356277
 
+import '../style/xonomy.css';
 
 // Xonomy template definitions
 // ======================================
@@ -133,7 +134,7 @@ export type XonomyAttributeDefinition = {
 
 	[isAlreadyValidated]?: boolean;
 }
-
+ 
 export type XonomyAttributeDefinitionExternal = {
 	displayName?: XonomyAttributeDefinition['displayName']|ReturnType<Required<XonomyAttributeDefinition>['displayName']>;
 	displayValue?: XonomyAttributeDefinition['displayValue']|ReturnType<Required<XonomyAttributeDefinition>['displayValue']>;

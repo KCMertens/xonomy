@@ -1,5 +1,5 @@
 const path = require('path');
-// const {CleanWebpackPlugin} = require('clean-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
 module.exports = {
 	entry: {
@@ -10,6 +10,9 @@ module.exports = {
 			test: /\.tsx?$/,
 			exclude: /node_modules/,
 			loader: 'ts-loader',
+		}, {
+			test: /\.css$/,
+			use: [MiniCssExtractPlugin.loader, 'css-loader'],
 		}]
 	},
 	output: {
@@ -30,4 +33,5 @@ module.exports = {
 			"@": path.join(__dirname, "src"),
 		}
 	},
+	plugins: [new MiniCssExtractPlugin()]
 };
