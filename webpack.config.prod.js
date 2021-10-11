@@ -12,7 +12,13 @@ module.exports = {
 			loader: 'ts-loader',
 		}, {
 			test: /\.css$/,
-			use: [MiniCssExtractPlugin.loader, 'css-loader'],
+			use: [{
+				loader: MiniCssExtractPlugin.loader,
+				options: {
+					publicPath: './'
+				},
+			}, 
+			'css-loader'],
 		}]
 	},
 	output: {
@@ -23,7 +29,9 @@ module.exports = {
 		// Path in webpack-dev-server for compiled files (has priority over disk files in case both exist)
 		publicPath: '/dist/',
 		clean: true, // clean previous outputs prior to compiling
-		library: ['Xonomy']
+		library: 'Xonomy',
+		libraryExport: 'default', // expose the default export to the global 'Xonomy' variable.
+
 	},
 	resolve: {
 		extensions: ['.js', '.ts'], // enable autocompleting .ts and .js extensions when using import '...'
