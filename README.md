@@ -5,8 +5,8 @@ For now it's published on NPM under https://www.npmjs.com/package/@kcmertens/xon
 
 # What works, what doesn't? 
 
-- types work when this is added as a dependency
-- css is not published, and so does not work yet
-- the library probably will not work when imported through `<script>` tag yet, and probably needs to go through a bundler (for now).
-- jquery is not marked as dependency (yet)
+- [x] types work when used as a dependency
+- [x] css is emitted separately, and works
+- [x] works when added in a webpage as <script>
+- [ ] (untested) might not work when used with `import`
 - the code is as-yet untested!
