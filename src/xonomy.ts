@@ -216,6 +216,7 @@ export class XonomyElementInstance {
 	getAttributeValue(name: string, ifNull: string): string;
 	getAttributeValue(name: string, ifNull?: string): string|undefined { const att = this.getAttribute(name); return att ? att.value : ifNull; }
 	hasElements(): boolean { return this.children.some(c => c.type === 'element'); }
+	hasText(): boolean { return this.children.some(c => c.type === 'text'); }
 	hasChildElement(elementID: string): boolean { return this.children.some(c => c.htmlID === elementID && c.type === 'element'); }
 	getText(): string { return this.children.map(c => c.type === 'text' ? c.value : c.getText()).join(''); }
 	getChildElements(elementID: string): XonomyElementInstance[] { return this.children.filter((c): c is XonomyElementInstance => c.type === 'element' && c.name === elementID); }
@@ -272,6 +273,7 @@ export class XonomyTextInstance implements XonomyTextInstance {
 	parent(): XonomyElementInstance|null { return this.internalParent; }
 }
 
+// Xonomy must be an object, or overwriting properties/functions (such as asker) at runtime wouldn't work.
 const Xonomy = {
 	lang: "", //"en"|"de"|fr"| ...
 	mode: "nerd" as 'nerd'|'laic', //"nerd"|"laic"
@@ -632,9 +634,12 @@ refresh() {
 	});
 },
 
-
-harvest() { //harvests the contents of an editor
-	//Returns xml-as-string.
+/**
+ * harvests the contents of an editor
+ * Returns xml-as-string.
+ * @returns {string}
+ */
+harvest() {
 	var rootElement=$(".xonomy .element").first().toArray()[0];
 	var js=Xonomy.harvestElement(rootElement);
 	for(var key in Xonomy.namespaces) {
@@ -1347,6 +1352,7 @@ internalMenu(htmlID: string, items: XonomyMenuAction[], harvest: (el: Element) =
 	var jsMe=harvest(document.getElementById(htmlID));
 	var fragments = items.map(function (item, i) {
 		Xonomy.verifyDocSpecMenuItem(item);
+		debugger;
 		var includeIt=!item.hideIf(jsMe);
 		var html="";
 		if(includeIt) {
@@ -2118,5 +2124,7 @@ goLeft(){
 	if($next.hasClass("rollouter")) Xonomy.setFocus($next.closest(".element").prop("id"), "rollouter");
 },
 }
+
+Xonomy.verifyDocSpec(); // initialize.
 
 export default Xonomy;
