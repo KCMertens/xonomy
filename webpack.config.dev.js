@@ -1,6 +1,8 @@
 const path = require('path');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
-module.exports = {
+
+const commonOptions = {
 	entry: {
 		'xonomy': './src/xonomy.ts',
 	},
@@ -9,17 +11,25 @@ module.exports = {
 			test: /\.tsx?$/,
 			exclude: /node_modules/,
 			loader: 'ts-loader',
+		}, {
+			test: /\.s?css$/,
+			use: [
+				{
+					loader: MiniCssExtractPlugin.loader,
+					options: {
+						publicPath: './'
+					}
+				}, 
+				'css-loader',
+				'sass-loader'
+			],
 		}]
 	},
 	output: {
-		filename: '[name].js',
-		// filename: '[name].js',
 		// Path on disk for output file
 		path: path.resolve(__dirname, 'dist'),
 		// Path in webpack-dev-server for compiled files (has priority over disk files in case both exist)
 		publicPath: '/dist/',
-		clean: true, // clean previous outputs prior to compiling
-		library: ['Xonomy']
 	},
 	resolve: {
 		extensions: ['.js', '.ts'], // enable autocompleting .ts and .js extensions when using import '...'
@@ -29,5 +39,32 @@ module.exports = {
 			"@": path.join(__dirname, "src"),
 		}
 	},
+	plugins: [new MiniCssExtractPlugin()],
 	devtool: "eval-source-map",
 };
+
+module.exports = [{
+	...commonOptions, 
+	output: {
+		...commonOptions.output, 
+		filename: '[name].umd.js',
+		library: {
+			// name: 'Xonomy',
+			type: 'umd',
+			umdNamedDefine: true,
+			// export: 'default', // use the default export of the library...
+		},
+	}
+}, {
+	...commonOptions, 
+	experiments: { outputModule: true },
+	output: {
+		...commonOptions.output, 
+		filename: '[name].esm.js',
+		library: {
+			type: 'module'
+		}
+	}
+}, 
+
+]
