@@ -330,6 +330,12 @@ export class Xonomy {
 	/** Ignore the next keyUp event */
 	notKeyUp= false;
 
+	// bookkeeping for when user clicks a word in the xml
+	// When the word is first clicked, save the word and its index in the sentence
+	// Then when a specific menu option is used to wrap the word in some html, (in Xonomy.wrap()), we know which word we should target.
+	wrapIndex = null as null|number;
+	wrapWord = null as null|string;
+
 	answer = null as null|((val: string) => void);
 
 	constructor() {
@@ -1018,70 +1024,78 @@ export class Xonomy {
 	/** wrap text in some html to render it in the editor as a text node */
 	chewText(txt: string): JQuery<HTMLElement> {
 		const self = this;
-		return $(`<span class='word focusable'>${txt}</span>`)
-		.on('click', function(event) {
-			if((event.ctrlKey||event.metaKey) && $(this).closest(".element").hasClass("hasInlineMenu")) {
-				event.stopPropagation();
-				self.wordClick(this);
-			}
+		const elements = txt.split(' ').map((word, index) => {
+			return $(
+			`<span data-index="${index}" data-word="${Xonomy.xmlEscape(word)}" class="word focusable">${Xonomy.xmlEscape(word)}</span>`)
+			.on('click', function(event) {
+				const isInlineMenu = $(this).closest('.element').hasClass('hasInlineMenu');
+				if (isInlineMenu && (event.ctrlKey || event.metaKey)) {
+					self.wordClick(this, );
+				}
+			})[0]; // convert to normal html element instead of jquery wrapper
 		});
+
+		return $(elements);
 	}
 	/** @param c the span where the textnode is rendered in the editor */
 	wordClick(c: HTMLElement) {
-		var $element=$(c);
+		const $word = $(c);
+		const $element = $(c).closest(".element");
+		const isReadOnly = $word.closest(".readonly").length > 0;
+		const htmlID = $element.attr("id")!;
 		this.clickoff();
-		var isReadOnly=( $element.closest(".readonly").toArray().length>0 );
+		
+		
 		if(!isReadOnly) {
-			var htmlID=$element.attr("id")!;
-			var content=this.inlineMenu(htmlID); //compose bubble content
+			this.notclick = true;
+			var content = this.inlineMenu(htmlID); //compose bubble content
+			this.wrapIndex = $word.data('index');
+			this.wrapWord = $word.data('word');
 			if(content) {
-				debugger;
 				this.makeBubble(content).appendTo(this.$div); //create bubble
-				this.showBubble($(c).last()); //anchor bubble to the word
+				this.showBubble($word); //anchor bubble to the word
 			}
 		}
 	}
+	/** Wrap the word in some xml. Assumes wordClick() has been called before this is called. So 1. wordClick() 2. wrap() */
 	wrap(htmlID: string, param: {template: string, placeholder: string}) {
 		const self = this;
+		const jsElement = self.harvestElement(document.getElementById(htmlID)!);
+		const oldText = jsElement.getText();
+		const words = oldText.split(' ');
+		
+
 		this.clickoff();
 		this.destroyBubble();
-		var xml=param.template;
-		var ph=param.placeholder;
-		var jsElement=this.harvestElement(document.getElementById(htmlID)!);
-		if(this.textFromID==this.textTillID) { //abc --> a<XYZ>b</XYZ>c
-			var jsOld=this.harvestText(document.getElementById(this.textFromID)!);
-			var txtOpen=jsOld.value.substring(0, this.textFromIndex);
-			var txtMiddle=jsOld.value.substring(this.textFromIndex, this.textTillIndex+1);
-			var txtClose=jsOld.value.substring(this.textTillIndex+1);
-			xml=xml.replace(ph, Xonomy.xmlEscape(txtMiddle));
-			const newContent = $(this.renderText(new XonomyTextInstance(txtOpen)))
-			.add(this.renderElement(this.xml2js(xml, jsElement)))
-			.add(this.renderText(new XonomyTextInstance(txtClose)))
-			$("#"+this.textFromID).replaceWith(newContent);
-			window.setTimeout(function(){ self.setFocus(newID, "openingTagName"); }, 100);
-		} else { //ab<...>cd --> a<XYZ>b<...>c</XYZ>d
-			var jsOldOpen=this.harvestText(document.getElementById(this.textFromID)!);
-			var jsOldClose=this.harvestText(document.getElementById(this.textTillID)!);
-			var txtOpen=jsOldOpen.value.substring(0, this.textFromIndex);
-			var txtMiddleOpen=jsOldOpen.value.substring(this.textFromIndex);
-			var txtMiddleClose=jsOldClose.value.substring(0, this.textTillIndex+1);
-			var txtClose=jsOldClose.value.substring(this.textTillIndex+1);
-			xml=xml.replace(ph, Xonomy.xmlEscape(txtMiddleOpen)+ph);
-			$("#"+this.textFromID).nextUntil("#"+this.textTillID).each(function(){
-				if($(this).hasClass("element")) xml=xml.replace(ph, self.js2xml(self.harvestElement(this))+ph);
-				else if($(this).hasClass("textnode")) xml=xml.replace(ph, self.js2xml(self.harvestText(this))+ph);
+		
+		
+		if ($('#'+htmlID+' .children .element').length > 0) {
+			$('#'+htmlID+' .children .element').each(function() {
+				self.unwrap(this.id);
 			});
-			xml=xml.replace(ph, Xonomy.xmlEscape(txtMiddleClose));
-			$("#"+this.textFromID).nextUntil("#"+this.textTillID).remove();
-			var js=this.xml2js(xml, jsElement); 
-			var newID=js.htmlID!;
-			$("#"+this.textTillID).remove();
-			const newContent = this.renderText(new XonomyTextInstance(txtOpen))
-			.add(this.renderElement(js))
-			.add(this.renderText(new XonomyTextInstance(txtClose)))
-			$("#"+this.textFromID).replaceWith(newContent);
-			window.setTimeout(function(){ self.setFocus(newID, "openingTagName"); }, 100);
+			self.wrapIndex = words.indexOf(self.wrapWord!);
 		}
+
+		let $output = $();
+		if (this.wrapIndex && this.wrapIndex > 0) {
+			const theWord = words[this.wrapIndex];
+			const xml = param.template.replace(param.placeholder, theWord)
+
+			const $before = this.renderText(new XonomyTextInstance(words.slice(0, this.wrapIndex).join(" ")));
+			const $wrapped = this.renderElement(this.xml2js(xml, jsElement));
+			const $after = this.renderText(new XonomyTextInstance(words.slice(this.wrapIndex+1).join(" ")));
+
+			$output = $before.append(document.createTextNode(" ")).append($wrapped).append(document.createTextNode(" ")).append($after);
+			const newID = $wrapped.data('id')!;
+			window.setTimeout(() => this.setFocus(newID, "openingTagName"), 100);
+		} else {
+			const xml = param.template.replace(param.placeholder, oldText)
+			const js = this.xml2js(xml, jsElement);
+			$output = this.renderElement(js);
+		}
+		$('#'+htmlID+' .children div').replaceWith($output);
+		this.wrapIndex = null;
+		this.wrapWord = null;
 		this.changed();
 	}
 	/** remove an element node and replace it with its children */
@@ -1089,7 +1103,8 @@ export class Xonomy {
 		const self = this;
 		var parentID=$("#"+htmlID)[0].parentElement!.parentElement!.id;
 		this.clickoff();
-		$("#"+htmlID).replaceWith($("#"+htmlID+" > .children > *"));
+		var jsElement=this.harvestElement(document.getElementById(htmlID)!);
+		$("#"+htmlID).replaceWith(this.renderText(new XonomyTextInstance(" " + jsElement.getText() + " ")));
 		this.changed();
 		window.setTimeout(function(){ self.setFocus(parentID, "openingTagName");  }, 100);
 	}
@@ -1327,16 +1342,19 @@ export class Xonomy {
 					var $items=$bubble.find(".focusme:visible");
 					var $next=$items.eq( $items.index($item[0])+1 );
 					$next.focus();
+					event.stopPropagation()
 				}
 				if(event.which==38) { //up key
 					var $item=$(event.delegateTarget);
 					var $items=$bubble.find("div.focusme:visible");
 					var $next=$items.eq( $items.index($item[0])-1 );
 					$next.focus();
+					event.stopPropagation()
 				}
 				if(event.which==13) { //enter key
 					$(event.delegateTarget).click();
 					self.notclick=false;
+					event.stopPropagation()
 				}
 			});
 		}
@@ -1384,7 +1402,7 @@ export class Xonomy {
 
 
 	askRemote(defaultString: string, param: {add?: XonomyPickListOption[], url: string, searchUrl: string, urlPlaceholder: string, createUrl: string}, jsMe: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance): JQuery<HTMLElement> {
-		const $html = $();
+		let $html = $();
 		
 		if (param.searchUrl || param.createUrl) {
 			const $form = $(w`
@@ -1397,14 +1415,14 @@ export class Xonomy {
 			$form.on('submit', () => this.remoteSearch(param.searchUrl, param.urlPlaceholder, defaultString))
 			$form.find('.buttonSearch').on('click', () => this.remoteSearch(param.searchUrl, param.urlPlaceholder, defaultString))
 			$form.find('.buttonCreate').on('click', () => this.remoteCreate(param.createUrl, param.searchUrl?param.searchUrl:param.url, param.urlPlaceholder, defaultString))
-			$html.add($form);
+			$html = $html.add($form);
 		}
 
 		const $wyc = this.wyc<XonomyPickListOption[]>(param.url, items => {
 			if (param.add) items.push(...param.add)
 			return this.pickerMenu(items, defaultString)
 		})
-		$html.add($wyc);
+		$html = $html.add($wyc);
 		this.lastAskerParam = param;
 		return $html;
 	}

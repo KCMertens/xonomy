@@ -1,6 +1,6 @@
 {
   "name": "@kcmertens/xonomy",
-  "version": "0.0.9",
+  "version": "1.0.0",
   "description": "An experimental typescript implementation of the Xonomy XML editor",
   "main": "./dist/xonomy.js",
   "types": "./dist/src/xonomy.d.ts",
