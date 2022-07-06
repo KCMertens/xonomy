@@ -1024,18 +1024,22 @@ export class Xonomy {
 	/** wrap text in some html to render it in the editor as a text node */
 	chewText(txt: string): JQuery<HTMLElement> {
 		const self = this;
-		const elements = txt.split(' ').map((word, index) => {
-			return $(
+		let $elements = $();
+
+		txt.split(' ').forEach((word, index) => {
+			const $word = $(
 			`<span data-index="${index}" data-word="${Xonomy.xmlEscape(word)}" class="word focusable">${Xonomy.xmlEscape(word)}</span>`)
 			.on('click', function(event) {
 				const isInlineMenu = $(this).closest('.element').hasClass('hasInlineMenu');
 				if (isInlineMenu && (event.ctrlKey || event.metaKey)) {
 					self.wordClick(this, );
 				}
-			})[0]; // convert to normal html element instead of jquery wrapper
+			});
+			if (index > 0) $elements = $elements.add(document.createTextNode(" ")); // space between words
+			$elements = $elements.add($word);
 		});
 
-		return $(elements);
+		return $elements;
 	}
 	/** @param c the span where the textnode is rendered in the editor */
 	wordClick(c: HTMLElement) {
@@ -1101,7 +1105,7 @@ export class Xonomy {
 	/** remove an element node and replace it with its children */
 	unwrap(htmlID: string) {
 		const self = this;
-		var parentID=$("#"+htmlID)[0].parentElement!.parentElement!.id;
+		var parentID= $("#"+htmlID).parent().closest('.element').data().id;
 		this.clickoff();
 		var jsElement=this.harvestElement(document.getElementById(htmlID)!);
 		$("#"+htmlID).replaceWith(this.renderText(new XonomyTextInstance(" " + jsElement.getText() + " ")));
@@ -1489,20 +1493,19 @@ export class Xonomy {
 		else { $menuItem.find(".submenu").first().slideDown("fast", function(){$menuItem.addClass("expanded");}); };
 	}
 	/**
-	 * @param htmlID id of the node for which to render the menu
 	 * @param items menu options
-	 * @param 
+	 * @param jsMe the element for which to render the menu
+	 * @param isSubMenu is the menu a section inside another parent menu
 	 */
-	internalMenu(htmlID: string|XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance, items: XonomyMenuAction[], harvest: (el: Element) => XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance, isSubMenu = false): JQuery<HTMLElement>|undefined {
+	internalMenu(items: XonomyMenuAction[], jsMe: XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance, isSubMenu = false): JQuery<HTMLElement>|undefined {
 		this.harvestCache={};
-		var jsMe= typeof htmlID === 'string' ? harvest(document.getElementById(htmlID)!) : htmlID;
 		const self = this;
 		
 		const $items = items.map(item => {
 			Xonomy.verifyDocSpecMenuItem(item);
 			if (item.hideIf(jsMe)) return undefined;
 			if (item.menu) { // render submenu
-				const $subMenu =  this.internalMenu(jsMe, item.menu, harvest, true);
+				const $subMenu =  this.internalMenu(item.menu, jsMe, true);
 				if (!$subMenu) return undefined;
 				const $menu = $(w`
 				<div class='menuItem ${item.expanded(jsMe)?"expanded":""}'>
@@ -1537,19 +1540,19 @@ export class Xonomy {
 		var elName=$("#"+htmlID).closest(".element").attr("data-name")!; //obtain element's name
 		this.verifyDocSpecAttribute(elName, name);
 		var spec=this.docSpec.elements[elName].attributes[name];
-		return this.internalMenu(htmlID, spec.menu, this.harvestAttribute.bind(this));
+		return this.internalMenu(spec.menu, this.harvestAttribute(document.getElementById(htmlID)!));
 	}
 	elementMenu(htmlID: string): JQuery<HTMLElement>|undefined {
 		this.harvestCache={};
 		var elName=$("#"+htmlID).attr("data-name")!; //obtain element's name
 		var spec=this.docSpec.elements[elName];
-		return this.internalMenu(htmlID, spec.menu, this.harvestElement.bind(this));
+		return this.internalMenu(spec.menu, this.harvestElement(document.getElementById(htmlID)!));
 	}
 	inlineMenu(htmlID: string): JQuery<HTMLElement>|undefined {
 		this.harvestCache={};
 		var elName=$("#"+htmlID).attr("data-name")!; //obtain element's name
 		var spec=this.docSpec.elements[elName];
-		return this.internalMenu(htmlID, spec.inlineMenu, this.harvestElement.bind(this));
+		return this.internalMenu(spec.inlineMenu, this.harvestElement(document.getElementById(htmlID)!));
 	}
 	callMenuFunction(menuItem: XonomyMenuAction, htmlID: string) {
 		menuItem.action.apply(this, [htmlID, menuItem.actionParameter]);
