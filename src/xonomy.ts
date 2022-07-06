@@ -317,6 +317,7 @@ export class Xonomy {
 	currentFocus= null as null|XonomyWhat;
 	keyNav= false;
 	
+	/** For use with external plugins, the last clicked element. */
 	lastClickWhat= "" as XonomyWhat;
 	
 	textFromID= "";
@@ -1056,7 +1057,7 @@ export class Xonomy {
 			this.wrapIndex = $word.data('index');
 			this.wrapWord = $word.data('word');
 			if(content) {
-				this.makeBubble(content).appendTo(this.$div); //create bubble
+				this.makeBubble(content); //create bubble
 				this.showBubble($word); //anchor bubble to the word
 			}
 		}
@@ -1172,7 +1173,7 @@ export class Xonomy {
 				$("#"+htmlID).addClass("current"); //make the element current
 				const content=this.elementMenu(htmlID); //compose bubble content
 				if(content) {
-					this.makeBubble(content).appendTo(this.$div); //create bubble
+					this.makeBubble(content); //create bubble
 					if(what=="openingTagName") this.showBubble($("#"+htmlID+" > .tag.opening > .name")); //anchor bubble to opening tag
 					if(what=="closingTagName") this.showBubble($("#"+htmlID+" > .tag.closing > .name")); //anchor bubble to closing tag
 				}
@@ -1183,7 +1184,7 @@ export class Xonomy {
 				$("#"+htmlID).addClass("current"); //make the attribute current
 				const content = this.attributeMenu(htmlID); //compose bubble content
 				if(content) {
-					this.makeBubble(content).appendTo(this.$div); //create bubble
+					this.makeBubble(content); //create bubble
 					this.showBubble($("#"+htmlID+" > .name")); //anchor bubble to attribute name
 				}
 				var surrogateAttr = this.harvestAttribute(document.getElementById(htmlID)!);
@@ -1199,7 +1200,7 @@ export class Xonomy {
 				let content = spec.asker.apply(this, [value, spec.askerParameter, this.harvestAttribute(document.getElementById(htmlID)!)]); //compose bubble content
 				if (typeof content === 'string') content = $(content);
 				if(content) {
-					this.makeBubble(content).appendTo(this.$div); //create bubble
+					this.makeBubble(content); //create bubble
 					this.showBubble($("#"+htmlID+" > .valueContainer > .value")); //anchor bubble to value
 					this.answer=function(val: string) {
 						var obj=document.getElementById(htmlID)!;
@@ -1220,7 +1221,7 @@ export class Xonomy {
 				let content = spec.asker.apply(this, [value, spec.askerParameter, jsEl]);
 				if (typeof content === 'string') content = $(content);
 				if(content) {
-					this.makeBubble(content).appendTo(this.$div); //create bubble
+					this.makeBubble(content); //create bubble
 					this.showBubble($("#"+htmlID+" > .value")); //anchor bubble to value
 					this.answer=function(val: string) {
 						var obj=document.getElementById(htmlID)!;
@@ -1241,7 +1242,7 @@ export class Xonomy {
 						content+="<div class='warning'>"+Xonomy.formatCaption(this.textByLang(warning.text))+"</div>";
 					}
 				}
-				this.makeBubble($(content)).appendTo(this.$div); //create bubble
+				this.makeBubble($(content)); //create bubble
 				this.showBubble($("#"+htmlID+" .warner .inside").first()); //anchor bubble to warner
 			}
 			if(what=="rollouter" && $("#"+htmlID+" > .tag.opening > .attributes").children(".shy").toArray().length>0) {
@@ -1279,7 +1280,13 @@ export class Xonomy {
 			if(this.keyboardEventCatcher) this.keyboardEventCatcher.focus();
 		}
 	}
-	makeBubble(content: JQuery<HTMLElement>) {
+	/** 
+	 * Create a popup and add it to the document. 
+	 * The popup will be hidden and showBubble() needs to be called to display it (at the position of the passed element).
+	 * @param content contents of the menu
+	 * @returns {JQuery<HTMLElement>} the menu. 
+	 */
+	makeBubble(content: JQuery<HTMLElement>|string|HTMLElement) {
 		this.destroyBubble();
 		const $bubble = $(w`
 		<div class="${this.mode} xonomyBubble">
@@ -1289,11 +1296,12 @@ export class Xonomy {
 		</div>`)
 		.on('click', () => this.notclick = true)
 		$bubble.find('.xonomyBubbleContent').append(content);
-		return $bubble;
+		return $bubble.appendTo(this.$div).hide();
 	}
 	showBubble($anchor: JQuery<Element>) {
 		const self = this;
 		var $bubble=this.$div.find(".xonomyBubble");
+		if (!$bubble.length) return; // no bubble currently exists.
 
 		let offset = $anchor.offset()!
 		// offset is in document-space (i.e. relative to the 0,0 point of document.)
@@ -1697,7 +1705,7 @@ export class Xonomy {
 		if(parameter.fromJs) var txt=parameter.fromJs( jsElement );
 		else if(parameter.fromXml) var txt=parameter.fromXml( this.js2xml(jsElement) );
 		else var txt=this.js2xml(jsElement);
-		this.makeBubble(this.askLongString(txt)).appendTo(this.$div); //create bubble
+		this.makeBubble(this.askLongString(txt)); //create bubble
 		this.showBubble($(div)); //anchor bubble to element
 		this.answer=function(val: string) {
 			var jsNewElement;
@@ -1888,7 +1896,7 @@ export class Xonomy {
 				var droppers=this.$div.find(".elementDropper").toArray();
 				for(var i=0; i<droppers.length; i++) {
 					var dropper=droppers[i];
-					if(dropper.parentNode!=$element.get(0).parentElement!.parentElement!.parentElement!) {
+					if(dropper.parentNode!=$element.get(0)!.parentElement!.parentElement!.parentElement!) {
 						dropper.parentElement!.removeChild(dropper);
 					}
 				}
