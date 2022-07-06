@@ -1295,11 +1295,17 @@ export class Xonomy {
 		const self = this;
 		var $bubble=this.$div.find(".xonomyBubble");
 
-		const offset = $anchor.offset()!
+		let offset = $anchor.offset()!
+		// offset is in document-space (i.e. relative to the 0,0 point of document.)
+		// but sometimes document (0,0) is not at the top left corner of the window, such as when scrolled down on the page (it'll be at (0, -100) for example when scrolled 100px down)
+		// so do this to transform the offset into screenspace (i.e. actual pixels from the top-left of the user's browser screen)
+		offset = { 
+			top: offset.top - $(window).scrollTop()!,
+			left: offset.left - $(window).scrollLeft()!
+		}
 
-		var screenWidth = $("body").width()!;
-		var screenHeight = $(document).height()!;
-		
+		var screenWidth = $(window).width()!;
+		var screenHeight = $(window).height()!;
 		
 		var bubbleHeight = $bubble.outerHeight()!;
 		var width = $anchor.width()!; if (width > 40) width = 40;
@@ -1340,13 +1346,14 @@ export class Xonomy {
 		});
 
 		if(this.keyNav) {
-			$bubble.find("div.focusme").on("keyup", function(event){
+			$bubble.find("div.focusme").on("keydown", function(event){
 				if(event.which==40) { //down key
 					var $item=$(event.delegateTarget);
 					var $items=$bubble.find(".focusme:visible");
 					var $next=$items.eq( $items.index($item[0])+1 );
 					$next.focus();
 					event.stopPropagation()
+					event.preventDefault()
 				}
 				if(event.which==38) { //up key
 					var $item=$(event.delegateTarget);
@@ -1354,11 +1361,13 @@ export class Xonomy {
 					var $next=$items.eq( $items.index($item[0])-1 );
 					$next.focus();
 					event.stopPropagation()
+					event.preventDefault()
 				}
 				if(event.which==13) { //enter key
 					$(event.delegateTarget).click();
 					self.notclick=false;
 					event.stopPropagation()
+					event.preventDefault()
 				}
 			});
 		}
