@@ -1,8 +1,8 @@
 {
-  "name": "@kcmertens/xonomy",
+  "name": "@elexis-eu/xonomy",
   "version": "1.0.0",
-  "description": "An experimental typescript implementation of the Xonomy XML editor",
-  "main": "./dist/xonomy.js",
+  "description": "A typescript port of the Xonomy XML editor",
+  "main": "./dist/xonomy.umd.js",
   "types": "./dist/src/xonomy.d.ts",
   "type": "commonjs",
   "files": [

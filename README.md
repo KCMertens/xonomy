@@ -1,7 +1,7 @@
 # Xonomy
 
 This is a Typescript port of Xonomy.
-For now it's published on NPM under https://www.npmjs.com/package/@kcmertens/xonomy 
+Available on NPM as [@elexis-eu/xonomy](https://www.npmjs.com/package/@elexis-eu/xonomy)
 
 ## Usage: 
 
