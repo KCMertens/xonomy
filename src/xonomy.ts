@@ -207,14 +207,17 @@ export class XonomyElementInstance {
 	readonly type = "element"
 	readonly attributes: XonomyAttributeInstance[] = [];
 	readonly children: Array<XonomyElementInstance|XonomyTextInstance> = [];
-
+	/** @deprecated use 'id' instead, which has the same value but is clearer. */
+	readonly name: string;
 	constructor(
 		public xonomy: Xonomy,
-		public readonly name: string,
+		public readonly id: string,
 		public readonly elementName: string,
 		private _internalParent?: XonomyElementInstance,
 		public htmlID?: string,
-	) {}
+	) {
+		this.name = this.id; // legacy interop.
+	}
 
 	parent(): XonomyElementInstance|undefined { 
 		return this.internalParent; 
@@ -238,7 +241,7 @@ export class XonomyElementInstance {
 	hasText(): boolean { return this.children.some(c => c.type === 'text'); }
 	hasChildElement(elementID: string): boolean { return this.children.some(c => c.htmlID === elementID && c.type === 'element'); }
 	getText(): string { return this.children.map(c => c.type === 'text' ? c.value : c.getText()).join(''); }
-	getChildElements(elementID: string): XonomyElementInstance[] { return this.children.filter((c): c is XonomyElementInstance => c.type === 'element' && c.name === elementID); }
+	getChildElements(elementID: string): XonomyElementInstance[] { return this.children.filter((c): c is XonomyElementInstance => c.type === 'element' && c.id === elementID); }
 	getDescendantElements(elementID: string): XonomyElementInstance[] { return this.children.flatMap(c => c.type === 'element' ? [c, ...c.getDescendantElements(elementID)] : []); }
 	getPrecedingSibling(): null|XonomyElementInstance {
 		if (this.internalParent) {
@@ -383,7 +386,7 @@ export class Xonomy {
 		if('documentElement' in xml) xml=xml.documentElement;
 
 		const elementName = xml.nodeName;
-		const elementID = this.docSpec.getElementId(xml.nodeName, jsParent ? jsParent.name : undefined);
+		const elementID = this.docSpec.getElementId(xml.nodeName, jsParent ? jsParent.id : undefined);
 		var js = new XonomyElementInstance(this, elementID,elementName);
 		
 		for(var i=0; i<xml.attributes.length; i++) {
@@ -842,8 +845,8 @@ export class Xonomy {
 
 	renderElement(element: XonomyElementInstance): JQuery<HTMLElement> {
 		const htmlID=element.htmlID=this.nextID();
-		this.verifyDocSpecElement(element.name);
-		var spec=this.docSpec.elements[element.name];
+		this.verifyDocSpecElement(element.id);
+		var spec=this.docSpec.elements[element.id];
 		var hasText = spec.hasText(element);
 		var classNames = Object.entries({
 			element: true,
@@ -862,7 +865,7 @@ export class Xonomy {
 		var title = spec.title ? this.textByLang(spec.title(element)) : '';
 
 		const $html = $(w`
-		<div data-name="${element.name}" id="${htmlID}" class="${classNames}">
+		<div data-name="${element.id}" id="${htmlID}" class="${classNames}">
 			<span class="connector">
 				<span class="plusminus"></span>
 				<span class="draghandle" draggable="true"></span>
@@ -904,8 +907,8 @@ export class Xonomy {
 
 		const $attributes = $html.find('.attributes');
 		for(var i=0; i<element.attributes.length; i++) {
-			this.verifyDocSpecAttribute(element.name, element.attributes[i].name);
-			$attributes.append(this.renderAttribute(element.attributes[i], element.name));
+			this.verifyDocSpecAttribute(element.id, element.attributes[i].name);
+			$attributes.append(this.renderAttribute(element.attributes[i], element.id));
 		}
 
 		const $children = $html.find('.children')
@@ -1813,8 +1816,8 @@ export class Xonomy {
 					$("#"+elLive.htmlID).find(".attributes").first().append($("#"+elDead.attributes[i].htmlID));
 				}
 			}
-			var specDead=this.docSpec.elements[elDead.name];
-			var specLive=this.docSpec.elements[elLive.name];
+			var specDead=this.docSpec.elements[elDead.id];
+			var specLive=this.docSpec.elements[elLive.id];
 			if(specDead.hasText(elDead) || specLive.hasText(elLive)){ //if either element is meant to have text, concatenate their children
 				if(elLive.getText()!="" && elDead.getText()!="") {
 					elLive.addText(" ");
