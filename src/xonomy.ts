@@ -1484,10 +1484,11 @@ export class Xonomy {
 			const item = typeof _item === 'string' ? {value: _item, caption: ''} : _item;
 			$(w`
 				<div class='menuItem focusme techno${item.value==defaultString?" current":""}' tabindex='1'>
-					<span class='punc'>"</span>
-					${item.displayValue ? this.textByLang(item.displayValue) : this.xmlEscape(item.value) }
-					<span class='punc'>"</span>
-					${item.caption ? `<span class='explainer ${!item.displayValue && !item.value ? 'alone' : ''}'>${this.xmlEscape(this.textByLang(item.caption))}</span>` : ''}
+					<span class='punc'>"</span>${
+						item.displayValue ? this.textByLang(item.displayValue) : this.xmlEscape(item.value) 
+					}<span class='punc'>"</span>${
+						item.caption ? `<span class='explainer ${!item.displayValue && !item.value ? 'alone' : ''}'>${this.xmlEscape(this.textByLang(item.caption))}</span>` : ''
+					}
 				</div>
 			`)
 			.on('click', () => this.answer!(this.xmlEscape(item.value)))
