@@ -159,8 +159,8 @@ export type XonomyAttributeDefinitionExternal = {
 
 export type XonomyDocSpec = {
 	elements: Record<string, XonomyElementDefinition>
-	unknownElement?: XonomyElementDefinition|((elementID: string) => XonomyElementDefinition)
-	unknownAttribute?: XonomyAttributeDefinition|((elementID: string, attributeName: string) => XonomyAttributeDefinition)
+	unknownElement?: XonomyElementDefinition|((elementID: string) => XonomyElementDefinitionExternal)
+	unknownAttribute?: XonomyAttributeDefinition|((elementID: string, attributeName: string) => XonomyAttributeDefinitionExternal)
 	onchange(instance?: XonomyTextInstance|XonomyElementInstance|XonomyAttributeInstance): void
 	/**  called with the root element as only argument */ 
 	validate(root: XonomyElementInstance): void
@@ -180,8 +180,8 @@ export type XonomyDocSpec = {
 
 export type XonomyDocSpecExternal = {
 	elements?: Record<string, XonomyElementDefinitionExternal>;
-	unknownElement?: XonomyElementDefinitionExternal;
-	unknownAttribute?: XonomyAttributeDefinitionExternal;
+	unknownElement?: XonomyElementDefinitionExternal|((id: string) => XonomyElementDefinitionExternal);
+	unknownAttribute?: XonomyAttributeDefinitionExternal|((name: string) => XonomyAttributeDefinitionExternal);
 	onchange?: XonomyDocSpec['onchange'];
 	validate?: XonomyDocSpec['validate'];
 	allowModeSwitching?: boolean;
@@ -474,10 +474,11 @@ export class Xonomy {
 	verifyDocSpecElement(name: string) { //make sure the DocSpec object has such an element, that the element has everything it needs
 		if(!$.isPlainObject(this.docSpec.elements[name])) {
 			const unknownElement = this.docSpec.unknownElement;
+			// @ts-ignore initial assignment is an incomplete object, making it complete happens below.
 			this.docSpec.elements[name] = 
 				unknownElement instanceof Function ? unknownElement(name) : 
 				$.isPlainObject(unknownElement) ? Object.assign({}, unknownElement) :
-				{} as XonomyElementDefinition;
+				{};
 		}
 		const spec = this.docSpec.elements[name] as Partial<XonomyElementDefinition>;
 		if (spec[isAlreadyValidated]) return;
@@ -517,10 +518,11 @@ export class Xonomy {
 		const elSpec = this.docSpec.elements[elementName];
 		if(!$.isPlainObject(elSpec.attributes[attributeName])) {
 			const unknownAttribute = this.docSpec.unknownAttribute;
+			// @ts-ignore initial assignment is an incomplete object, making it complete happens below.
 			elSpec.attributes[attributeName] = 
 				unknownAttribute instanceof Function ? unknownAttribute(elementName, attributeName) : 
 				$.isPlainObject(unknownAttribute) ? Object.assign({}, unknownAttribute) :
-				{} as XonomyAttributeDefinition;
+				{};
 		}
 		const spec = elSpec.attributes[attributeName] as Partial<XonomyAttributeDefinition>;
 		if (spec[isAlreadyValidated]) return;
