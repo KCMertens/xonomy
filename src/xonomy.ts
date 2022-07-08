@@ -349,12 +349,12 @@ export class Xonomy {
 		if(mode=="laic") this.$div.removeClass("nerd").addClass("laic");
 	}
 
-	static jsEscape(str: string) {
+	jsEscape(str: string) {
 		return String(str)
 				.replace(/\"/g, '\\\"')
 				.replace(/\'/g, '\\\'')
 	}
-	static xmlEscape(str: string, jsEscape?: boolean) {
+	xmlEscape(str: string, jsEscape?: boolean) {
 		if(jsEscape) str=this.jsEscape(str);
 		return String(str)
 			.replace(/&/g, '&amp;')
@@ -363,7 +363,7 @@ export class Xonomy {
 			.replace(/</g, '&lt;')
 			.replace(/>/g, '&gt;');
 	}
-	static xmlUnscape(value: string){
+	xmlUnscape(value: string){
 		return String(value)
 			.replace(/&quot;/g, '"')
 			.replace(/&apos;/g, "'")
@@ -371,7 +371,7 @@ export class Xonomy {
 			.replace(/&gt;/g, '>')
 			.replace(/&amp;/g, '&');
 	}
-	static isNamespaceDeclaration(attributeName: string) {
+	isNamespaceDeclaration(attributeName: string) {
 		//Tells you whether an attribute name is a namespace declaration.
 		var ret=false;
 		if(attributeName=="xmlns") ret=true;
@@ -388,7 +388,7 @@ export class Xonomy {
 		
 		for(var i=0; i<xml.attributes.length; i++) {
 			var attr=xml.attributes[i];
-			if(!Xonomy.isNamespaceDeclaration(attr.nodeName)) {
+			if(!this.isNamespaceDeclaration(attr.nodeName)) {
 				if(attr.name!="xml:space") {
 					js.setAttribute(attr.nodeName, attr.value);
 				}
@@ -409,14 +409,14 @@ export class Xonomy {
 	}
 	js2xml(js: XonomyElementInstance|XonomyTextInstance|XonomyAttributeInstance) {
 		if(js.type=="text") {
-			return Xonomy.xmlEscape(js.value);
+			return this.xmlEscape(js.value);
 		} else if(js.type=="attribute") {
-			return js.name+"='"+Xonomy.xmlEscape(js.value)+"'";
+			return js.name+"='"+this.xmlEscape(js.value)+"'";
 		} else if(js.type=="element") {
 			var xml="<"+js.elementName;
 			for(var i=0; i<js.attributes.length; i++) {
 				var att=js.attributes[i];
-				xml+=" "+att.name+"='"+Xonomy.xmlEscape(att.value)+"'";
+				xml+=" "+att.name+"='"+this.xmlEscape(att.value)+"'";
 			}
 			if(js.children.length>0) {
 				var hasText=false;
@@ -428,7 +428,7 @@ export class Xonomy {
 				xml+=">";
 				for(var i=0; i<js.children.length; i++) {
 					var child=js.children[i];
-					if(child.type=="text") xml+=Xonomy.xmlEscape(child.value); //text node
+					if(child.type=="text") xml+=this.xmlEscape(child.value); //text node
 					else if(child.type=="element") xml+=this.js2xml(child); //element node
 				}
 				xml+="</"+js.elementName+">";
@@ -440,7 +440,7 @@ export class Xonomy {
 		return '';
 	}
 
-	static asFunction<T, I extends XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance>(specProperty: T|undefined|((inst: I) => T)|(() => T), defaultValue: T): (inst: I) => T {
+	asFunction<T, I extends XonomyElementInstance|XonomyAttributeInstance|XonomyTextInstance>(specProperty: T|undefined|((inst: I) => T)|(() => T), defaultValue: T): (inst: I) => T {
 		if(specProperty instanceof Function)
 			return specProperty;
 		else if (typeof(specProperty)==typeof(defaultValue))
@@ -482,31 +482,31 @@ export class Xonomy {
 			asker: spec.asker instanceof Function ? spec.asker : this.askLongString,
 			askerParameter: spec.askerParameter,
 			attributes: $.isPlainObject(spec.attributes) ? spec.attributes! : {},
-			backgroundColour: Xonomy.asFunction(spec.backgroundColour, ''),
+			backgroundColour: this.asFunction(spec.backgroundColour, ''),
 			canDropTo: Array.isArray(spec.canDropTo) ? spec.canDropTo : [],
-			caption: 'caption' in spec ? Xonomy.asFunction(spec.caption, '') : undefined as any,
-			collapsed: Xonomy.asFunction(spec.collapsed, false),
-			collapsible: Xonomy.asFunction(spec.collapsible, true),
-			collapsoid: 'collapsoid' in spec ? Xonomy.asFunction(spec.collapsoid, '') : undefined as any,
-			displayName: 'displayName' in spec ? Xonomy.asFunction(spec.displayName, name) : undefined as any,
-			displayValue: 'displayValue' in spec ? Xonomy.asFunction(spec.displayValue, '') : undefined as any,
+			caption: 'caption' in spec ? this.asFunction(spec.caption, '') : undefined as any,
+			collapsed: this.asFunction(spec.collapsed, false),
+			collapsible: this.asFunction(spec.collapsible, true),
+			collapsoid: 'collapsoid' in spec ? this.asFunction(spec.collapsoid, '') : undefined as any,
+			displayName: 'displayName' in spec ? this.asFunction(spec.displayName, name) : undefined as any,
+			displayValue: 'displayValue' in spec ? this.asFunction(spec.displayValue, '') : undefined as any,
 			// @ts-ignore
-			elementName: Xonomy.asFunction(spec.elementName, name),
-			hasText: Xonomy.asFunction(spec.hasText, false),
+			elementName: this.asFunction(spec.elementName, name),
+			hasText: this.asFunction(spec.hasText, false),
 			inlineMenu: Array.isArray(spec.inlineMenu) ? spec.inlineMenu : [],
-			isInvisible: 'isInvisible' in spec ? Xonomy.asFunction(spec.isInvisible, false) : undefined as any,
-			isReadOnly: 'isReadOnly' in spec ? Xonomy.asFunction(spec.isReadOnly, false) : undefined as any,
-			localDropOnly: Xonomy.asFunction(spec.localDropOnly, false),
+			isInvisible: 'isInvisible' in spec ? this.asFunction(spec.isInvisible, false) : undefined as any,
+			isReadOnly: 'isReadOnly' in spec ? this.asFunction(spec.isReadOnly, false) : undefined as any,
+			localDropOnly: this.asFunction(spec.localDropOnly, false),
 			menu: Array.isArray(spec.menu) ? spec.menu : [],
-			mustBeAfter: 'mustBeAfter' in spec ? Xonomy.asFunction(spec.mustBeAfter, []) : undefined as any,
-			mustBeBefore: 'mustBeBefore' in spec ? Xonomy.asFunction(spec.mustBeBefore, []) : undefined as any,
-			oneliner: Xonomy.asFunction(spec.oneliner, false),
-			title: 'title' in spec ? Xonomy.asFunction(spec.title, '') : undefined as any,
+			mustBeAfter: 'mustBeAfter' in spec ? this.asFunction(spec.mustBeAfter, []) : undefined as any,
+			mustBeBefore: 'mustBeBefore' in spec ? this.asFunction(spec.mustBeBefore, []) : undefined as any,
+			oneliner: this.asFunction(spec.oneliner, false),
+			title: 'title' in spec ? this.asFunction(spec.title, '') : undefined as any,
 			[isAlreadyValidated]: true
 		}));
 		
-		for(var i=0; i<spec.menu!.length; i++) Xonomy.verifyDocSpecMenuItem(spec.menu![i]);
-		for(var i=0; i<spec.inlineMenu!.length; i++) Xonomy.verifyDocSpecMenuItem(spec.inlineMenu![i]);
+		for(var i=0; i<spec.menu!.length; i++) this.verifyDocSpecMenuItem(spec.menu![i]);
+		for(var i=0; i<spec.inlineMenu!.length; i++) this.verifyDocSpecMenuItem(spec.inlineMenu![i]);
 		for(var attributeName in spec.attributes) this.verifyDocSpecAttribute(name, attributeName);
 	}
 	verifyDocSpecAttribute(elementName: string, attributeName: string) { //make sure the DocSpec object has such an attribute, that the attribute has everything it needs
@@ -524,20 +524,20 @@ export class Xonomy {
 		Object.assign(spec, makeSureDefaultsHaveAllProperties<XonomyAttributeDefinition>({
 			asker: spec.asker instanceof Function ? spec.asker : this.askString,
 			askerParameter: spec.askerParameter,
-			caption: 'caption' in spec ? Xonomy.asFunction(spec.caption, '') : undefined as any,
-			displayName: 'displayName' in spec ? Xonomy.asFunction(spec.displayName, attributeName) : undefined as any,
-			displayValue: 'displayValue' in spec ? Xonomy.asFunction(spec.displayValue, '') : undefined as any,
-			title: 'title' in spec ? Xonomy.asFunction(spec.title, '') : undefined as any,
-			isInvisible: 'isInvisible' in spec ? Xonomy.asFunction(spec.isInvisible, false) : undefined as any,
-			isReadOnly: 'isReadOnly' in spec ? Xonomy.asFunction(spec.isReadOnly, false) : undefined as any,
+			caption: 'caption' in spec ? this.asFunction(spec.caption, '') : undefined as any,
+			displayName: 'displayName' in spec ? this.asFunction(spec.displayName, attributeName) : undefined as any,
+			displayValue: 'displayValue' in spec ? this.asFunction(spec.displayValue, '') : undefined as any,
+			title: 'title' in spec ? this.asFunction(spec.title, '') : undefined as any,
+			isInvisible: 'isInvisible' in spec ? this.asFunction(spec.isInvisible, false) : undefined as any,
+			isReadOnly: 'isReadOnly' in spec ? this.asFunction(spec.isReadOnly, false) : undefined as any,
 			menu: Array.isArray(spec.menu) ? spec.menu : [],
-			shy: 'shy' in spec ? Xonomy.asFunction(spec.shy, false) : undefined as any,
+			shy: 'shy' in spec ? this.asFunction(spec.shy, false) : undefined as any,
 			[isAlreadyValidated]: true
 		}));
 
-		for(var i=0; i<spec.menu!.length; i++) Xonomy.verifyDocSpecMenuItem(spec.menu![i]);
+		for(var i=0; i<spec.menu!.length; i++) this.verifyDocSpecMenuItem(spec.menu![i]);
 	}
-	static verifyDocSpecMenuItem(menuItem: XonomyMenuAction) { //make sure the menu item has all it needs
+	verifyDocSpecMenuItem(menuItem: XonomyMenuAction) { //make sure the menu item has all it needs
 		if (menuItem[isAlreadyValidated]) return;
 		Object.assign(menuItem, makeSureDefaultsHaveAllProperties<XonomyMenuAction>({
 			action: menuItem.action instanceof Function ? menuItem.action : function(){},
@@ -939,7 +939,7 @@ export class Xonomy {
 		var readonly=false;
 
 		var displayName=attribute.name;
-		var displayValue=Xonomy.xmlEscape(attribute.value);
+		var displayValue=this.xmlEscape(attribute.value);
 		var caption="";
 		var title="";
 		var spec=optionalParentName && this.docSpec.elements[optionalParentName]?.attributes?.[attribute.name];
@@ -958,7 +958,7 @@ export class Xonomy {
 		if(caption) caption = `<span class='inlinecaption'>${caption}</span>`;
 
 		var $html=$(w`
-			<span data-name="${attribute.name}" data-value="${Xonomy.xmlEscape(attribute.value)}" id="${htmlID}" class="${classNames}">
+			<span data-name="${attribute.name}" data-value="${this.xmlEscape(attribute.value)}" id="${htmlID}" class="${classNames}">
 				<span class="punc">&nbsp;</span>
 				<span class="warner"><span class="inside"></span></span>
 				<span class="name attributeName focusable" title="${title}">${displayName}</span>
@@ -987,7 +987,7 @@ export class Xonomy {
 		if(text.value=="") classNames+=" empty";
 		
 		var $html=$(w`
-			<div id="${htmlID}" data-value="${Xonomy.xmlEscape(text.value)}" class="${classNames}">
+			<div id="${htmlID}" data-value="${this.xmlEscape(text.value)}" class="${classNames}">
 				<span class="connector"></span>
 				<span class="value">
 					<span class="insertionPoint">
@@ -1008,7 +1008,7 @@ export class Xonomy {
 		if($.trim(displayText)=="") classNames+=" whitespace";
 		if(displayText=="") classNames+=" empty";
 		const $html=$(`
-			<div id="${htmlID}" data-value="${Xonomy.xmlEscape(text)}" class="${classNames}">
+			<div id="${htmlID}" data-value="${this.xmlEscape(text)}" class="${classNames}">
 				<span class="connector"></span>
 				<span class="value">
 					<span class="insertionPoint">
@@ -1029,7 +1029,7 @@ export class Xonomy {
 
 		txt.split(' ').forEach((word, index) => {
 			const $word = $(
-			`<span data-index="${index}" data-word="${Xonomy.xmlEscape(word)}" class="word focusable">${Xonomy.xmlEscape(word)}</span>`)
+			`<span data-index="${index}" data-word="${this.xmlEscape(word)}" class="word focusable">${this.xmlEscape(word)}</span>`)
 			.on('click', function(event) {
 				const isInlineMenu = $(this).closest('.element').hasClass('hasInlineMenu');
 				if (isInlineMenu && (event.ctrlKey || event.metaKey)) {
@@ -1239,7 +1239,7 @@ export class Xonomy {
 				for(var iWarning=0; iWarning<this.warnings.length; iWarning++) {
 					var warning=this.warnings[iWarning];
 					if(warning.htmlID==htmlID) {
-						content+="<div class='warning'>"+Xonomy.formatCaption(this.textByLang(warning.text))+"</div>";
+						content+="<div class='warning'>"+this.formatCaption(this.textByLang(warning.text))+"</div>";
 					}
 				}
 				this.makeBubble($(content)); //create bubble
@@ -1386,7 +1386,7 @@ export class Xonomy {
 		const self = this;
 		const $html = $(w`
 		<form>
-			<input name='val' class='textbox focusme' style='width: ${width}px;' value='${Xonomy.xmlEscape(defaultString)}'>
+			<input name='val' class='textbox focusme' style='width: ${width}px;' value='${this.xmlEscape(defaultString)}'>
 			<input type='submit' value='OK'>
 		</form>`);
 
@@ -1399,7 +1399,7 @@ export class Xonomy {
 		const self = this;
 		return $(w`
 		<form>
-			<textarea name='val' class='textbox focusme' spellcheck='false' style='width: ${width}px; height: 150px;'>${Xonomy.xmlEscape(defaultString)}</textarea>
+			<textarea name='val' class='textbox focusme' spellcheck='false' style='width: ${width}px; height: 150px;'>${this.xmlEscape(defaultString)}</textarea>
 			<div class='submitline'><input type='submit' value='OK'></div>
 		</form>`)
 		.on('submit', function() {self.answer!((this as HTMLFormElement).val.value); return false;})
@@ -1413,7 +1413,7 @@ export class Xonomy {
 		const self = this;
 		const $html = this.pickerMenu(picklist, defaultString).add(w`
 		<form class='undermenu'>
-			<input name='val' class='textbox focusme' value='${!isInPicklist ? Xonomy.xmlEscape(defaultString) : ""}'>
+			<input name='val' class='textbox focusme' value='${!isInPicklist ? this.xmlEscape(defaultString) : ""}'>
 			<input type='submit' value='OK'>
 		</form>`);
 		$html.find('form').on('submit', function() { self.answer!((this as HTMLFormElement).val.value); return false; })
@@ -1480,12 +1480,12 @@ export class Xonomy {
 			$(w`
 				<div class='menuItem focusme techno${item.value==defaultString?" current":""}' tabindex='1'>
 					<span class='punc'>"</span>
-					${item.displayValue ? this.textByLang(item.displayValue) : Xonomy.xmlEscape(item.value) }
+					${item.displayValue ? this.textByLang(item.displayValue) : this.xmlEscape(item.value) }
 					<span class='punc'>"</span>
-					${item.caption ? `<span class='explainer ${!item.displayValue && !item.value ? 'alone' : ''}'>${Xonomy.xmlEscape(this.textByLang(item.caption))}</span>` : ''}
+					${item.caption ? `<span class='explainer ${!item.displayValue && !item.value ? 'alone' : ''}'>${this.xmlEscape(this.textByLang(item.caption))}</span>` : ''}
 				</div>
 			`)
-			.on('click', () => this.answer!(Xonomy.xmlEscape(item.value)))
+			.on('click', () => this.answer!(this.xmlEscape(item.value)))
 			.appendTo($html)
 		}
 		
@@ -1519,7 +1519,7 @@ export class Xonomy {
 		const self = this;
 		
 		const $items = items.map(item => {
-			Xonomy.verifyDocSpecMenuItem(item);
+			this.verifyDocSpecMenuItem(item);
 			if (item.hideIf(jsMe)) return undefined;
 			if (item.menu) { // render submenu
 				const $subMenu =  this.internalMenu(item.menu, jsMe, true);
@@ -1528,7 +1528,7 @@ export class Xonomy {
 				<div class='menuItem ${item.expanded(jsMe)?"expanded":""}'>
 					<div class='menuLabel focusme' tabindex='0'>
 						${item.icon ? "<span class='icon'><img src='"+item.icon+"'/></span> " : ""}
-						${Xonomy.formatCaption(this.textByLang(item.caption(jsMe)))}
+						${this.formatCaption(this.textByLang(item.caption(jsMe)))}
 					</div>
 				</div>`);
 
@@ -1541,7 +1541,7 @@ export class Xonomy {
 				<div class='menuItem focusme' tabindex='0'>
 					${item.keyTrigger && item.keyCaption ? "<span class='keyCaption'>"+this.textByLang(item.keyCaption)+"</span>" : ""}
 					${item.icon ? "<span class='icon'><img src='"+item.icon+"'/></span> " : ""}
-					${Xonomy.formatCaption(this.textByLang(item.caption(jsMe)))}
+					${this.formatCaption(this.textByLang(item.caption(jsMe)))}
 				</div>
 				`)
 				.on('click', () => this.callMenuFunction(item, jsMe.htmlID!));
@@ -1574,7 +1574,7 @@ export class Xonomy {
 	callMenuFunction(menuItem: XonomyMenuAction, htmlID: string) {
 		menuItem.action.apply(this, [htmlID, menuItem.actionParameter]);
 	}
-	static formatCaption(caption: string) {
+	formatCaption(caption: string) {
 		caption=caption.replace(/\<(\/?)([^\>\/]+)(\/?)\>/g, "<span class='techno'><span class='punc'>&lt;$1</span><span class='elName'>$2</span><span class='punc'>$3&gt;</span></span>");
 		caption=caption.replace(/\@"([^\"]+)"/g, "<span class='techno'><span class='punc'>\"</span><span class='atValue'>$1</span><span class='punc'>\"</span></span>");
 		caption=caption.replace(/\@([^ =]+)=""/g, "<span class='techno'><span class='atName'>$1</span><span class='punc'>=\"</span><span class='punc'>\"</span></span>");
