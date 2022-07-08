@@ -1350,8 +1350,17 @@ export class Xonomy {
 		}
 		$bubble.css(placement);
 		$bubble.slideDown("fast", function() {
-			if(self.keyNav) $bubble.find(".focusme").first().focus(); //if the context menu contains anything with the class name 'focusme', focus it.
-			else $bubble.find("input.focusme, select.focusme, textarea.focusme").first().focus();
+			if(self.keyNav) {
+				const input = $bubble.find(".focusme").first()[0];
+				if (input) input.focus();
+				// @ts-ignore
+				if (input && input.setSelectionRange) input.setSelectionRange(input.value.length, input.value.length);
+			} else {
+				const input = $bubble.find("input.focusme, select.focusme, textarea.focusme").first()[0];
+				if (input) input.focus();
+				// @ts-ignore
+				if (input && input.setSelectionRange) input.setSelectionRange(input.value.length, input.value.length);
+			}
 		});
 
 		$bubble.on("keyup", function(event){
