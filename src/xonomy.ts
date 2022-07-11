@@ -340,6 +340,8 @@ export class Xonomy {
 	wrapIndex = null as null|number;
 	wrapWord = null as null|string;
 
+	buttonClass = ''
+
 	answer = null as null|((val: string) => void);
 
 	constructor() {
@@ -782,8 +784,8 @@ export class Xonomy {
 		if(docSpec.allowLayby){
 			const layby = $(w`
 			<div class='layby closed empty'>
-				<span class='button closer'>&nbsp;</span>
-				<span class='button purger'>&nbsp;</span>
+				<span class='button closer ${this.xmlEscape(this.buttonClass)}'>&nbsp;</span>
+				<span class='button purger ${this.xmlEscape(this.buttonClass)}'>&nbsp;</span>
 				<div class='content'></div>
 				<div class='message'>${this.textByLang(docSpec.laybyMessage)}</div>
 			</div>`);
@@ -1401,7 +1403,7 @@ export class Xonomy {
 		const $html = $(w`
 		<form>
 			<input name='val' class='textbox focusme' style='width: ${width}px;' value='${this.xmlEscape(defaultString)}'>
-			<input type='submit' value='OK'>
+			<button type="submit" value="OK" class="${this.xmlEscape(this.buttonClass)}">OK</button>
 		</form>`);
 
 		$html.on('submit', function() { self.answer!((this as HTMLFormElement).val.value); return false; })
@@ -1414,7 +1416,7 @@ export class Xonomy {
 		return $(w`
 		<form>
 			<textarea name='val' class='textbox focusme' spellcheck='false' style='width: ${width}px; height: 150px;'>${this.xmlEscape(defaultString)}</textarea>
-			<div class='submitline'><input type='submit' value='OK'></div>
+			<div class='submitline'><button type='submit' value='OK' class="${this.xmlEscape(this.buttonClass)}">OK</button></div>
 		</form>`)
 		.on('submit', function() {self.answer!((this as HTMLFormElement).val.value); return false;})
 	}
@@ -1428,7 +1430,7 @@ export class Xonomy {
 		const $html = this.pickerMenu(picklist, defaultString).add(w`
 		<form class='undermenu'>
 			<input name='val' class='textbox focusme' value='${!isInPicklist ? this.xmlEscape(defaultString) : ""}'>
-			<input type='submit' value='OK'>
+			<button type='submit' value='OK' class="${this.xmlEscape(this.buttonClass)}">OK</button>
 		</form>`);
 		$html.find('form').on('submit', function() { self.answer!((this as HTMLFormElement).val.value); return false; })
 		$html.find('input.textbox').on('keyup', () => this.notKeyUp=true);
@@ -1443,8 +1445,8 @@ export class Xonomy {
 			const $form = $(w`
 			<form class='overmenu'>
 				<input name='val' class='textbox focusme' value=''/>
-				${param.searchUrl ? `<button class='buttonSearch'>&nbsp;</button>` : ''}
-				${param.createUrl ? `<button class='buttonCreate'>&nbsp;</button>` : ''}
+				${param.searchUrl ? `<button class='buttonSearch ${this.xmlEscape(this.buttonClass)}'>&nbsp;</button>` : ''}
+				${param.createUrl ? `<button class='buttonCreate ${this.xmlEscape(this.buttonClass)}'>&nbsp;</button>` : ''}
 			</form>`);
 
 			$form.on('submit', () => this.remoteSearch(param.searchUrl, param.urlPlaceholder, defaultString))
