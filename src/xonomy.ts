@@ -2090,7 +2090,7 @@ export class Xonomy {
 		var $scrollableContainer=$(scrollableContainer as any); if(!scrollableContainer) $scrollableContainer=$keyboardEventCatcher;
 		$keyboardEventCatcher.attr("tabindex", "0");
 		$keyboardEventCatcher.on("keydown", e => self.key(e));
-		$(document).on("keydown", function(e) { if([32, 37, 38, 39, 40].indexOf(e.keyCode)>-1 && self.$div.find("input:focus, select:focus, textarea:focus").length==0) e.preventDefault(); }); //prevent default browser scrolling on arrow keys
+		$(document).on("keydown", function(e) { if([37, 38, 39, 40].includes(e.keyCode) && self.$div.find("input:focus, select:focus, textarea:focus").length==0) e.preventDefault(); }); //prevent default browser scrolling on arrow keys
 		this.keyboardEventCatcher=$keyboardEventCatcher;
 		this.scrollableContainer=$scrollableContainer;
 	}
