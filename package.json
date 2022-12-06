@@ -1,6 +1,6 @@
 {
   "name": "@elexis-eu/xonomy",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "A typescript port of the Xonomy XML editor",
   "main": "./dist/xonomy.umd.js",
   "types": "./dist/src/xonomy.d.ts",
